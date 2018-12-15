@@ -9,7 +9,7 @@ namespace Helper
     {
         static readonly string[] SizeSuffixes =
                    {"bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
-        static string SizeSuffix(long value, int decimalPlaces = 2)
+        public static string SizeSuffix(long value, int decimalPlaces = 2)
         {
             if (decimalPlaces < 0) { throw new ArgumentOutOfRangeException("decimalPlaces"); }
             if (value < 0) { return "-" + SizeSuffix(-value); }
