@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
-using System.Text.RegularExpressions;
 using Helper;
 
 namespace Repository
@@ -23,26 +22,21 @@ namespace Repository
         const string pageTitleSortedIndexPath = "titles_sorted.index";
         const string redirectsSortedPath = "redirects_sorted.bin";
 
-        static void Main()
-        {
-            byte[] data = File.ReadAllBytes(wikitextIndexPath);
-            Functions.QuickSort(data, 16, 0, 4);
-            File.WriteAllBytes(wikitextSortedIndexPath, data);
-        }
-
-        static void _Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("Creating repository...");
             try
             {
                 if (!Wikitext_outputs.All((path) => File.Exists(path)))
                     if (!Wikitext()) throw new Exception("Unable to generate Wikitext");
-
-            }catch(Exception ex)
+                if (!Sorting_outputs.All((path) => File.Exists(path)))
+                    if (!Sorting()) throw new Exception("Unable to sort indices");
+                Console.WriteLine("Repository created!");
+            }
+            catch(Exception ex)
             {
                 Console.WriteLine(ex.ToString());
             }
-            Console.WriteLine("Repository created!");
             Console.ReadLine();
         }
         static string[] Wikitext_inputs = new string[] { wikipediaPath };
@@ -61,8 +55,6 @@ namespace Repository
                 Console.WriteLine("Press any key to continue...");
                 Console.ReadKey();
             }
-            Directory.CreateDirectory("Wikitext\\");
-
             FileStream wikipedia = new FileStream(wikipediaPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
             FileStream titles = new FileStream(pageTitlePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 1024 * 16);
             FileStream titlesIndex = new FileStream(pageTitleIndexPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 1024 * 4);
@@ -207,6 +199,40 @@ namespace Repository
             wikitext.Dispose();
             wikitextIndex.Dispose();
             redirects.Dispose();
+            return true;
+        }
+        static string[] Sorting_inputs = new string[] { wikitextIndexPath, pageTitleIndexPath, redirectsPath };
+        static string[] Sorting_outputs = new string[] { wikitextSortedIndexPath, pageTitleSortedIndexPath, redirectsSortedPath };
+        static bool Sorting()
+        {
+            foreach (var file in Sorting_inputs)
+                if (!File.Exists(file))
+                {
+                    Console.WriteLine("File " + file + " not found!");
+                    return false;
+                }
+            if (Sorting_outputs.Any((path) => File.Exists(path)))
+            {
+                Console.WriteLine("WARNING: Some files will be replaced.");
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+            }
+            byte[] data = null;
+            Console.WriteLine("Sorting wikitext indices...");
+            data = File.ReadAllBytes(wikitextIndexPath);
+            Functions.QuickSort(data, 16, 0, 4);
+            File.WriteAllBytes(wikitextSortedIndexPath, data);
+            data = null;
+            Console.WriteLine("Sorting titles indices...");
+            data = File.ReadAllBytes(pageTitleIndexPath);
+            Functions.QuickSort(data, 16, 0, 4);
+            File.WriteAllBytes(pageTitleSortedIndexPath, data);
+            data = null;
+            Console.WriteLine("Sorting redirects...");
+            data = File.ReadAllBytes(redirectsPath);
+            Functions.QuickSort(data, 8, 0, 4);
+            File.WriteAllBytes(redirectsSortedPath, data);
+            data = null;
             return true;
         }
     }

@@ -33,12 +33,20 @@ namespace Helper
         }
         private static void quicksort(byte[] data, int size, int offset, int length, int left, int right)
         {
-            if (left > right || left < 0 || right < 0) return;
-            int index = partition(data, size, offset, length, left, right);
-            if (index != -1)
+            Stack<Tuple<int, int>> stack = new Stack<Tuple<int, int>>();
+            stack.Push(new Tuple<int, int>(left, right));
+            while (stack.Count != 0)
             {
-                quicksort(data, size, offset, length, left, index - 1);
-                quicksort(data, size, offset, length, index + 1, right);
+                Tuple<int, int> args = stack.Pop();
+                left = args.Item1;
+                right = args.Item2;
+                if (left > right || left < 0 || right < 0) continue;
+                int index = partition(data, size, offset, length, left, right);
+                if (index != -1)
+                {
+                    stack.Push(new Tuple<int, int>(left, index - 1));
+                    stack.Push(new Tuple<int, int>(index + 1, right));
+                }
             }
         }
         private static int partition(byte[] data, int size, int offset, int length, int left, int right)
@@ -52,8 +60,10 @@ namespace Helper
                 bool is_less = true;
                 for (int j = length - 1; j >= 0; j--)
                     if (j == 0)
-                        is_less = data[i * size + offset + j] <  pivot[j];
-                    else if (data[i * size + offset + j] > pivot[j]) 
+                        is_less = data[i * size + offset + j] < pivot[j];
+                    else if (data[i * size + offset + j] < pivot[j])
+                        break;
+                    else if (data[i * size + offset + j] > pivot[j])
                     {
                         is_less = false;
                         break;
