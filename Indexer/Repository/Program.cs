@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
+using System.Text.RegularExpressions;
 using Helper;
 
 namespace Repository
@@ -11,26 +12,57 @@ namespace Repository
     class Program
     {
         const string wikipediaPath = "wikipedia.xml";
+
         const string wikitextPath = "wikitext.txt";
         const string wikitextIndexPath = "wikitext.index";
         const string pageTitlePath = "titles.txt";
         const string pageTitleIndexPath = "titles.index";
         const string redirectsPath = "redirects.bin";
-        static void Main(string[] args)
+
+        const string wikitextSortedIndexPath = "wikitext_sorted.index";
+        const string pageTitleSortedIndexPath = "titles_sorted.index";
+        const string redirectsSortedPath = "redirects_sorted.bin";
+
+        static void Main()
         {
+            byte[] data = File.ReadAllBytes(wikitextIndexPath);
+            Functions.QuickSort(data, 16, 0, 4);
+            File.WriteAllBytes(wikitextSortedIndexPath, data);
+        }
+
+        static void _Main(string[] args)
+        {
+            Console.WriteLine("Creating repository...");
             try
             {
+                if (!Wikitext_outputs.All((path) => File.Exists(path)))
+                    if (!Wikitext()) throw new Exception("Unable to generate Wikitext");
 
-                Wikitext();
             }catch(Exception ex)
             {
                 Console.WriteLine(ex.ToString());
             }
+            Console.WriteLine("Repository created!");
             Console.ReadLine();
         }
-        static void Wikitext()
+        static string[] Wikitext_inputs = new string[] { wikipediaPath };
+        static string[] Wikitext_outputs = new string[] { wikitextPath, wikitextIndexPath, pageTitlePath, pageTitleIndexPath, redirectsPath };
+        static bool Wikitext()
         {
+            foreach (var file in Wikitext_inputs)
+                if (!File.Exists(file))
+                {
+                    Console.WriteLine("File " + file + " not found!");
+                    return false;
+                }
+            if (Wikitext_outputs.Any((path) => File.Exists(path)))
+            {
+                Console.WriteLine("WARNING: Some files will be replaced.");
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+            }
             Directory.CreateDirectory("Wikitext\\");
+
             FileStream wikipedia = new FileStream(wikipediaPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
             FileStream titles = new FileStream(pageTitlePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 1024 * 16);
             FileStream titlesIndex = new FileStream(pageTitleIndexPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 1024 * 4);
@@ -175,6 +207,7 @@ namespace Repository
             wikitext.Dispose();
             wikitextIndex.Dispose();
             redirects.Dispose();
+            return true;
         }
     }
 }

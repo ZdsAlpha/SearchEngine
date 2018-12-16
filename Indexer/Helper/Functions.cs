@@ -25,5 +25,54 @@ namespace Helper
                 adjustedSize,
                 SizeSuffixes[mag]);
         }
+        public static void QuickSort(byte[] data, int size, int offset, int length)
+        {
+            if (data.Length % size != 0) throw new Exception("Invalid data or size.");
+            if (offset + length > size) throw new Exception("Invalid offset or length.");
+            quicksort(data, size, offset, length, 0, data.Length / size - 1);
+        }
+        private static void quicksort(byte[] data, int size, int offset, int length, int left, int right)
+        {
+            if (left > right || left < 0 || right < 0) return;
+            int index = partition(data, size, offset, length, left, right);
+            if (index != -1)
+            {
+                quicksort(data, size, offset, length, left, index - 1);
+                quicksort(data, size, offset, length, index + 1, right);
+            }
+        }
+        private static int partition(byte[] data, int size, int offset, int length, int left, int right)
+        {
+            if (left > right) return -1;
+            int end = left;
+            byte[] pivot = new byte[length];
+            Buffer.BlockCopy(data, right * size + offset, pivot, 0, length);
+            for (int i = left; i < right; i++)
+            {
+                bool is_less = true;
+                for (int j = length - 1; j >= 0; j--)
+                    if (j == 0)
+                        is_less = data[i * size + offset + j] <  pivot[j];
+                    else if (data[i * size + offset + j] > pivot[j]) 
+                    {
+                        is_less = false;
+                        break;
+                    }
+                if (is_less)
+                {
+                    swap(data, size, i, end);
+                    end++;
+                }
+            }
+            swap(data, size, end, right);
+            return end;
+        }
+        private static void swap(byte[] data, int size, int left, int right)
+        {
+            byte[] temp = new byte[size];
+            Buffer.BlockCopy(data, left * size, temp, 0, size);
+            Buffer.BlockCopy(data, right * size, data, left * size, size);
+            Buffer.BlockCopy(temp, 0, data, right * size, size);
+        }
     }
 }
