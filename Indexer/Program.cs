@@ -16,6 +16,8 @@ namespace Indexer
         const string lexiconPath = "lexicon.txt";
         const string lexiconIndexPath = "lexicon.index";
 
+        const string frequency = "frequency.bin";
+
         static void Main(string[] args)
         {
             Console.WriteLine("Creating index...");
