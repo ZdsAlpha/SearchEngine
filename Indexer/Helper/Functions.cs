@@ -114,6 +114,73 @@ namespace Helper
                 index[i] = cf;
             return index;
         }
-
+        public static Tuple<int,int> BinarySearch(byte[] data, int size, int offset, byte[] obj)
+        {
+            int left = 0;
+            int right = data.Length / size - 1;
+            BinarySearch(data, size, offset, obj, ref left, ref right);
+            return new Tuple<int, int>(left, right);
+        }
+        public static void BinarySearch(byte[] data, int size, int offset, byte[] obj, ref int left, ref int right)
+        {
+            int _left = left;
+            int _right = right;
+            if (data.Length % size != 0) throw new Exception("Invalid data or size.");
+            if (offset + obj.Length > size) throw new Exception("Invalid offset or length.");
+            while(left <= right)
+            {
+                int mid = (left + right) / 2;
+                bool is_less = true;
+                bool is_equal = false;
+                for (int j = obj.Length - 1; j >= 0; j--)
+                    if (j == 0 && data[mid * size + offset + j] == obj[j])
+                    {
+                        is_less = false;
+                        is_equal = true;
+                    }
+                    else if (data[mid * size + offset + j] < obj[j])
+                        break;
+                    else if (data[mid * size + offset + j] > obj[j])
+                    {
+                        is_less = false;
+                        break;
+                    }
+                if (is_equal)
+                {
+                    left = ++mid;
+                    right = left - 1;
+                    for (left = left - 1; left >= _left; left--)
+                    {
+                        is_equal = true;
+                        for (int j = obj.Length - 1; j >= 0; j--)
+                            if (data[left * size + offset + j] != obj[j])
+                            {
+                                is_equal = false;
+                                break;
+                            }
+                        if (!is_equal) break;
+                    }
+                    left++;
+                    for (right = right + 1; right <= _right; right++)
+                    {
+                        is_equal = true;
+                        for (int j = obj.Length - 1; j >= 0; j--)
+                            if (data[right * size + offset + j] != obj[j])
+                            {
+                                is_equal = false;
+                                break;
+                            }
+                        if (!is_equal) break;
+                    }
+                    right--;
+                    return;
+                }
+                else if (is_less)
+                    left = mid + 1;
+                else
+                    right = mid - 1;
+            }
+            right = left - 1;
+        }
     }
 }
