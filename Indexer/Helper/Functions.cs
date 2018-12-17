@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -24,6 +25,22 @@ namespace Helper
             return string.Format("{0:n" + decimalPlaces + "} {1}",
                 adjustedSize,
                 SizeSuffixes[mag]);
+        }
+        public static bool VerifyIO(string[] inputs, string[] outputs)
+        {
+            foreach (var file in inputs)
+                if (!File.Exists(file))
+                {
+                    Console.WriteLine("File " + file + " not found!");
+                    return false;
+                }
+            if (outputs.Any((path) => File.Exists(path)))
+            {
+                Console.WriteLine("WARNING: Some files will be replaced.");
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+            }
+            return true;
         }
         public static void QuickSort(byte[] data, int size, int offset, int length)
         {
@@ -114,12 +131,30 @@ namespace Helper
                 index[i] = cf;
             return index;
         }
+        public static Tuple<int,int> BinarySearch(byte[] data, int size, int offset, byte[] obj, uint[] index)
+        {
+            int left;
+            int right;
+            BinarySearch(data, size, offset, obj, out left, out right, index);
+            return new Tuple<int, int>(left, right);
+        }
         public static Tuple<int,int> BinarySearch(byte[] data, int size, int offset, byte[] obj)
         {
             int left = 0;
             int right = data.Length / size - 1;
             BinarySearch(data, size, offset, obj, ref left, ref right);
             return new Tuple<int, int>(left, right);
+        }
+        public static void BinarySearch(byte[] data, int size, int offset, byte[] obj, out int left, out int right, uint[] index)
+        {
+            byte msb = obj[obj.Length - 1];
+            byte lsb = obj[obj.Length - 2];
+            if (msb == 0 && lsb == 0)
+                left = 0;
+            else
+                left = (int)index[msb * 256 + lsb - 1];
+            right = (int)index[msb * 256 + lsb] - 1;
+            BinarySearch(data, size, offset, obj, ref left, ref right);
         }
         public static void BinarySearch(byte[] data, int size, int offset, byte[] obj, ref int left, ref int right)
         {

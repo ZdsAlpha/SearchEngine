@@ -43,18 +43,7 @@ namespace Repository
         static string[] Wikitext_outputs = new string[] { wikitextPath, wikitextIndexPath, pageTitlePath, pageTitleIndexPath, redirectsPath };
         static bool Wikitext()
         {
-            foreach (var file in Wikitext_inputs)
-                if (!File.Exists(file))
-                {
-                    Console.WriteLine("File " + file + " not found!");
-                    return false;
-                }
-            if (Wikitext_outputs.Any((path) => File.Exists(path)))
-            {
-                Console.WriteLine("WARNING: Some files will be replaced.");
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
-            }
+            if (!Functions.VerifyIO(Wikitext_inputs, Wikitext_outputs)) return false;
             FileStream wikipedia = new FileStream(wikipediaPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
             FileStream titles = new FileStream(pageTitlePath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 16);
             FileStream titlesIndex = new FileStream(pageTitleIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
@@ -205,18 +194,7 @@ namespace Repository
         static string[] Sorting_outputs = new string[] { wikitextSortedIndexPath, pageTitleSortedIndexPath, redirectsSortedPath };
         static bool Sorting()
         {
-            foreach (var file in Sorting_inputs)
-                if (!File.Exists(file))
-                {
-                    Console.WriteLine("File " + file + " not found!");
-                    return false;
-                }
-            if (Sorting_outputs.Any((path) => File.Exists(path)))
-            {
-                Console.WriteLine("WARNING: Some files will be replaced.");
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
-            }
+            if (!Functions.VerifyIO(Sorting_inputs, Sorting_outputs)) return false;
             byte[] data = null;
             Console.WriteLine("Sorting wikitext indices...");
             data = File.ReadAllBytes(wikitextIndexPath);

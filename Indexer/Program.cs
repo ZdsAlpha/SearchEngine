@@ -16,7 +16,13 @@ namespace Indexer
         const string lexiconPath = "lexicon.txt";
         const string lexiconIndexPath = "lexicon.index";
 
-        const string wordcountPath = "wordcount.bin";
+        const string lexiconSortedIndexPath = "lexicon_sorted.index";
+
+        const string forwardIndexPath = "forward.index";
+        const string forwardIndexIndexPath = "forwrad.index2";
+
+        const string reverseIndexPath = "reverese.index";
+        const string reverseIndexIndexPath = "reverse.index2";
 
         static void Main(string[] args)
         {
@@ -25,6 +31,12 @@ namespace Indexer
             {
                 if (!Lexicon_outputs.All((path) => File.Exists(path)))
                     if (!Lexicon()) throw new Exception("Unable to generate lexicon!");
+                if (!SortLexicon_outputs.All((path) => File.Exists(path)))
+                    if (!SortLexicon()) throw new Exception("Unable to sort lexicon!");
+                if (!ForwardIndex_output.All((path) => File.Exists(path)))
+                    if (!ForwardIndex()) throw new Exception("Unable to forward index!");
+                if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
+                    if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
                 Console.WriteLine("Index created!");
             }
             catch(Exception ex)
@@ -37,18 +49,7 @@ namespace Indexer
         static string[] Lexicon_outputs = new string[] { lexiconPath, lexiconIndexPath };
         static bool Lexicon()
         {
-            foreach (var file in Lexicon_inputs)
-                if (!File.Exists(file))
-                {
-                    Console.WriteLine("File " + file + " not found!");
-                    return false;
-                }
-            if (Lexicon_outputs.Any((path) => File.Exists(path)))
-            {
-                Console.WriteLine("WARNING: Some files will be replaced.");
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
-            }
+            if (!Functions.VerifyIO(Lexicon_inputs, Lexicon_outputs)) return false;
             
             FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
@@ -138,10 +139,164 @@ namespace Indexer
             lexiconIndex.Dispose();
             return true;
         }
-        
+        static string[] SortLexicon_inputs = new string[] { lexiconIndexPath };
+        static string[] SortLexicon_outputs = new string[] { lexiconSortedIndexPath };
+        static bool SortLexicon()
+        {
+            if (!Functions.VerifyIO(SortLexicon_inputs, SortLexicon_outputs)) return false;
+            Console.WriteLine("Sorting lexicon...");
+            byte[] data = File.ReadAllBytes(lexiconIndexPath);
+            Functions.QuickSort(data, 16, 0, 4);
+            File.WriteAllBytes(lexiconSortedIndexPath, data);
+            return true;
+        }
+        static string[] ForwardIndex_inputs = new string[] { repositoryPath, repositoryIndexPath, lexiconSortedIndexPath };
+        static string[] ForwardIndex_output = new string[] { forwardIndexPath, forwardIndexIndexPath };
         static bool ForwardIndex()
         {
-            return false;
+            if (!Functions.VerifyIO(ForwardIndex_inputs, ForwardIndex_output)) return false;
+            byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
+            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 2);
+
+            FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
+            FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
+            FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 16);
+            FileStream forwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
+
+            BinaryReader repositoryReader = new BinaryReader(repository);
+            BinaryReader repositoryIndexReader = new BinaryReader(repositoryIndex);
+            BinaryWriter forwardIndexWriter = new BinaryWriter(forwardIndex);
+            BinaryWriter forwardIndexIndexWriter = new BinaryWriter(forwardIndexIndex);
+
+            Stopwatch stopwatch = new Stopwatch();
+            StringBuilder word = new StringBuilder();
+            bool ascii = true;
+            stopwatch.Start();
+            int seconds = 0;
+            for (int page_index = 0; page_index < repositoryIndex.Length / 16; page_index++)
+            {
+                int[] wordcount = new int[lexiconIndex.Length / 16];
+                uint page_id = repositoryIndexReader.ReadUInt32();
+                ulong page_pos = repositoryIndexReader.ReadUInt64();
+                uint page_length = repositoryIndexReader.ReadUInt32();
+                if (repository.Position != (long)page_pos)
+                    repository.Position = (long)page_pos;
+                string content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
+
+                for (int i = 0; i < content.Length; i++)
+                {
+                    char c = content[i];
+                    if (char.IsLetter(c))
+                    {
+                        if (c >= 128)
+                            ascii = false;
+                        word.Append(char.ToLower(c));
+                    }
+                    else if (word.Length != 0)
+                    {
+                        if (ascii && word.Length <= 20)
+                        {
+                            string _word = word.ToString();
+                            uint CRC = Crc32.Compute(_word);
+                            int start;
+                            int stop;
+                            Functions.BinarySearch(lexiconIndex, 16, 0, BitConverter.GetBytes(CRC), out start, out stop, lexiconIndex2);
+                            if (stop - start >= 1) throw new Exception("Collision detected!");
+                            if (start == stop)
+                                wordcount[start]++;
+                        }
+                        word.Clear();
+                        ascii = true;
+                    }
+                }
+
+                MemoryStream wordIdList = new MemoryStream();
+                BinaryWriter wordIdListWriter = new BinaryWriter(wordIdList);
+                for (int i = 0; i < wordcount.Length; i++)
+                {
+                    if (wordcount[i] != 0)
+                    {
+                        wordIdListWriter.Write(lexiconIndex, i * 16, 4);
+                        wordIdListWriter.Write(wordcount[i]);
+                    }
+                }
+                wordIdListWriter.Flush();
+                byte[] wordIdListBin = wordIdList.ToArray();
+                wordIdListWriter.Dispose();
+                wordIdList.Dispose();
+
+                ulong position = (ulong)forwardIndex.Position;
+                uint length = (uint)wordIdListBin.Length;
+                forwardIndexIndexWriter.Write(page_id);
+                forwardIndexIndexWriter.Write(position);
+                forwardIndexIndexWriter.Write(length);
+                forwardIndexWriter.Write(wordIdListBin);
+
+                word.Clear();
+                ascii = true;
+                if (stopwatch.Elapsed.TotalSeconds > seconds)
+                {
+                    Console.Clear();
+                    Console.WriteLine("Time Elasped: " + stopwatch.Elapsed.ToString());
+                    Console.WriteLine("Processed: " + Functions.SizeSuffix(repository.Position));
+                    Console.WriteLine("Total: " + Functions.SizeSuffix(repository.Length));
+                    Console.WriteLine("Pages processed: " + page_index.ToString());
+                    seconds++;
+                }
+            }
+            stopwatch.Stop();
+            Console.WriteLine("Total time: " + stopwatch.Elapsed.ToString());
+
+            repositoryReader.Dispose();
+            repositoryIndexReader.Dispose();
+            forwardIndexWriter.Dispose();
+            forwardIndexIndexWriter.Dispose();
+            return true;
+        }
+        static string[] ReverseIndex_inputs = new string[] {lexiconSortedIndexPath, forwardIndexPath, forwardIndexIndexPath };
+        static string[] ReverseIndex_outputs = new string[] { reverseIndexPath, reverseIndexIndexPath };
+        static bool ReverseIndex()
+        {
+            if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
+            byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
+            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 2);
+
+            FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 16);
+            FileStream forwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
+            FileStream reverseIndex = new FileStream(reverseIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 16);
+            FileStream reverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
+
+            BinaryReader forwardIndexReader = new BinaryReader(forwardIndex);
+            BinaryReader forwardIndexIndexReader = new BinaryReader(forwardIndexIndex);
+            BinaryWriter reverseIndexWriter = new BinaryWriter(reverseIndex);
+            BinaryWriter reverseIndexIndexWriter = new BinaryWriter(reverseIndexIndex);
+
+            int[] wordcount = new int[lexiconIndex.Length / 16];
+            for (int i = 0; i < forwardIndex.Length / 4; i++)
+            {
+                int start;
+                int stop;
+                Functions.BinarySearch(lexiconIndex, 16, 0, forwardIndexReader.ReadBytes(4),out start,out stop, lexiconIndex2);
+                if (stop - start > 1) throw new Exception("Collision detected!");
+                if (start == stop)
+                    wordcount[start]++;
+            }
+
+            ulong cf = 0;
+            for (int i = 0; i < wordcount.Length; i++)
+                if (wordcount[i] != 0)
+                {
+                    reverseIndexIndexWriter.Write(lexiconIndex, i * 16, 4);
+                    reverseIndexIndexWriter.Write(cf * 4);
+                    reverseIndexIndexWriter.Write(wordcount[i] * 4);
+                    cf += (ulong)wordcount[i];
+                }
+                else
+                    throw new Exception("Word count cannot be zero");
+
+
+
+            return true;
         }
     }
 }
