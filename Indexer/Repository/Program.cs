@@ -22,7 +22,7 @@ namespace Repository
         const string pageTitleSortedIndexPath = "titles_sorted.index";
         const string redirectsSortedPath = "redirects_sorted.bin";
 
-        static void _Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("Creating repository...");
             try

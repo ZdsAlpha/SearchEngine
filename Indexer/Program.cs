@@ -16,9 +16,17 @@ namespace Indexer
         const string lexiconPath = "lexicon.txt";
         const string lexiconIndexPath = "lexicon.index";
 
-        const string frequency = "frequency.bin";
+        const string wordcountPath = "wordcount.bin";
 
-        static void Main(string[] args)
+        static void Main()
+        {
+            byte[] data = File.ReadAllBytes(lexiconIndexPath);
+            Functions.QuickSort(data, 16, 0, 4);
+            uint[] index = Functions.Index2(data, 16, 2);
+            uint x = index[256 * 256 - 1];
+        }
+
+        static void _Main(string[] args)
         {
             Console.WriteLine("Creating index...");
             try
@@ -137,6 +145,11 @@ namespace Indexer
             lexicon.Dispose();
             lexiconIndex.Dispose();
             return true;
+        }
+        
+        static bool ForwardIndex()
+        {
+            return false;
         }
     }
 }

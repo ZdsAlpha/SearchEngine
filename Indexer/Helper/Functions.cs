@@ -27,9 +27,13 @@ namespace Helper
         }
         public static void QuickSort(byte[] data, int size, int offset, int length)
         {
+            QuickSort(data, size, offset, length, 0, data.Length / size - 1);
+        }
+        public static void QuickSort(byte[] data, int size, int offset, int length, int left, int right)
+        {
             if (data.Length % size != 0) throw new Exception("Invalid data or size.");
             if (offset + length > size) throw new Exception("Invalid offset or length.");
-            quicksort(data, size, offset, length, 0, data.Length / size - 1);
+            quicksort(data, size, offset, length, left, right);
         }
         private static void quicksort(byte[] data, int size, int offset, int length, int left, int right)
         {
@@ -84,5 +88,32 @@ namespace Helper
             Buffer.BlockCopy(data, right * size, data, left * size, size);
             Buffer.BlockCopy(temp, 0, data, right * size, size);
         }
+        public static uint[] Index2(byte[] data, int size, int offset)
+        {
+            return Index2(data, size, offset, 0, data.Length / size - 1);
+        }
+        public static uint[] Index2(byte[] data, int size, int offset, int left, int right)
+        {
+            if (data.Length % size != 0) throw new Exception("Invalid data or size.");
+            if (offset + 2 > size) throw new Exception("Invalid offset or length.");
+            uint[] index = new uint[256 * 256];
+            int index_id = 0;
+            uint cf;
+            for (cf = 0; cf < data.Length / size; cf++)
+            {
+                if (index_id / 256 < data[cf*size+offset+1] ||(index_id / 256 == data[cf * size + offset + 1] && index_id % 256 < data[cf * size + offset]))
+                {
+                    while(!(index_id / 256 == data[cf * size + offset + 1] && index_id % 256 == data[cf * size + offset]))
+                    {
+                        index[index_id] = cf;
+                        index_id++;
+                    }
+                }
+            }
+            for (int i = index_id; i < 256 * 256; i++)
+                index[i] = cf;
+            return index;
+        }
+
     }
 }
