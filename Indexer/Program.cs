@@ -46,45 +46,36 @@ namespace Indexer
                 return start;
             return -1;
         }
-        static void Main2()
+
+        static void Main2(string[] args)
         {
-            for (int i = 0; i < 1000; i++)
-                Test(null);
-        }
-        static void Test(string[] args)
-        {
-            Random r = new Random();
-            int length = (int)(r.NextDouble() * 1000);
-            byte[] data = new byte[length * 16];
-            int[] nums = new int[length];
-            for (int i = 0; i < length; i++)
+            byte[] wordIndex = File.ReadAllBytes("lexicon_sorted.index");
+            byte[] forwardIndex = File.ReadAllBytes("forwrad.index2");
+            Functions.QuickSort(wordIndex, 16, 0, 4);
+            Functions.QuickSort(forwardIndex, 16, 0, 4);
+            uint[] wordIndex2 = Functions.Index2(wordIndex, 16, 0);
+            uint[] forwardIndex2 = Functions.Index2(forwardIndex, 16, 0);
+            while (true)
             {
-                nums[i] = r.Next();
-                byte[] num_bytes = BitConverter.GetBytes(nums[i]);
-                Buffer.BlockCopy(num_bytes, 0, data, i * 16, 4);
-                Buffer.BlockCopy(num_bytes, 0, data, i * 16 + 4, 4);
+                Console.Write("Enter title: ");
+                string title = Console.ReadLine();
+                uint titleCRC = Crc32.Compute(title);
+                int f_index = GetIndex(forwardIndex, 16, 0, BitConverter.GetBytes(titleCRC), forwardIndex2);
+                long f_pos = (long)BitConverter.ToUInt64(forwardIndex, f_index * 16 + 4);
+                int f_len = (int)BitConverter.ToUInt32(forwardIndex, f_index * 16 + 12);
+                byte[] words = ReadBytes("forward.index", f_pos, f_len);
+                Functions.QuickSort(words, 8, 4, 4);
+                for (int i = 0; i < Math.Min(words.Length / 8, 1000); i++)
+                {
+                    uint wordCRC = BitConverter.ToUInt32(words, ((words.Length / 8) - i - 1) * 8);
+                    uint freq = BitConverter.ToUInt32(words, (words.Length / 8 - i - 1) * 8 + 4);
+                    int w_index = GetIndex(wordIndex, 16, 0, BitConverter.GetBytes(wordCRC), wordIndex2);
+                    long w_pos = (long)BitConverter.ToUInt64(wordIndex, w_index * 16 + 4);
+                    int w_len = (int)BitConverter.ToUInt32(wordIndex, w_index * 16 + 12);
+                    string word = Encoding.UTF8.GetString(ReadBytes("lexicon.txt", w_pos, w_len)).TrimEnd('\r', '\n');
+                    Console.WriteLine(word + "\t" + freq.ToString());
+                }
             }
-            Functions.QuickSort(data, 16, 0, 4);
-            Functions.QuickSort(data, 16, 0, 4);
-            int last_num = int.MinValue;
-            for (int i = 0; i < length; i++)
-            {
-                int num = BitConverter.ToInt32(data, i * 16);
-                if (num != BitConverter.ToInt32(data, i * 16 + 4))
-                    throw new Exception("Block copy error!");
-                if (num < last_num)
-                    throw new Exception("Sorting error!");
-                last_num = num;
-            }
-            Array.Sort(nums);
-            uint[] index = Functions.Index2(data, 16, 0);
-            for (int i = 0; i < length; i++)
-            {
-                int _i = GetIndex(data, 16, 0, BitConverter.GetBytes(nums[i]), index);
-                if (_i != i)
-                    throw new Exception("Searching/Indexing error!");
-            }
-            Console.WriteLine("Tets complete!");
         }
 
         static void Main(string[] args)
@@ -113,7 +104,7 @@ namespace Indexer
             uint[] reverseIndex2 = Functions.Index2(reverseIndex, 16, 0);
             while (true)
             {
-                Console.WriteLine("Enter word: ");
+                Console.Write("Enter word: ");
                 string word = Console.ReadLine();
                 uint wordCRC = Crc32.Compute(word.ToLower());
                 int r_index = GetIndex(reverseIndex, 16, 0, BitConverter.GetBytes(wordCRC), reverseIndex2);
@@ -125,8 +116,8 @@ namespace Indexer
                 Functions.QuickSort(pages, 8, 4, 4);
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
-                    uint freq = BitConverter.ToUInt32(pages, i * 8);
-                    uint titleCRC = BitConverter.ToUInt32(pages, i * 8 + 4);
+                    uint titleCRC = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8);
+                    uint freq = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8 + 4);
                     int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
                     if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
                         throw new Exception("Paradox!");
@@ -392,20 +383,19 @@ namespace Indexer
                     wordcount[start]++;
             }
 
+            ulong[] wordpos = new ulong[wordcount.Length];
             ulong cf = 0;
             for (int i = 0; i < wordcount.Length; i++)
                 if (wordcount[i] != 0)
                 {
                     reverseIndexIndexWriter.Write(lexiconIndex, i * 16, 4);
-                    reverseIndexIndexWriter.Write(cf * 4);
-                    reverseIndexIndexWriter.Write(wordcount[i] * 4);
+                    reverseIndexIndexWriter.Write(cf * 8);
+                    reverseIndexIndexWriter.Write(wordcount[i] * 8);
+                    wordpos[i] += cf;
                     cf += (ulong)wordcount[i];
                 }
                 else
                     throw new Exception("Word count cannot be zero");
-            int[] wordpos = new int[wordcount.Length];
-            for (int i = 1; i < wordpos.Length; i++)
-                wordpos[i] = wordpos[i - 1] + wordcount[i - 1];
             int[] wordcount2 = new int[lexiconIndex.Length / 16];
             for (int i = 0; i < forwardIndexIndex.Length / 16; i++)
             {
@@ -424,8 +414,8 @@ namespace Indexer
                     if (stop - start > 0) throw new Exception("Collision detected!");
                     if (start == stop)
                     {
-                        reverseIndex.Position = wordpos[start] * 8 + wordcount2[start] * 8;
-                        reverseIndexWriter.Write(wordCRC);
+                        reverseIndex.Position = (long)(wordpos[start] * 8 + (ulong)wordcount2[start] * 8);
+                        reverseIndexWriter.Write(CRC);
                         reverseIndexWriter.Write(freq);
                         wordcount2[start]++;
                     }
