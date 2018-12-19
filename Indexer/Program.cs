@@ -21,7 +21,7 @@ namespace Indexer
         const string forwardIndexPath = "forward.index";
         const string forwardIndexIndexPath = "forwrad.index2";
 
-        const string reverseIndexPath = "reverese.index";
+        const string reverseIndexPath = "reverse.index";
         const string reverseIndexIndexPath = "reverse.index2";
 
         static byte[] ReadBytes(string file, long pos, int len)
@@ -46,7 +46,7 @@ namespace Indexer
                 return start;
             return -1;
         }
-        static void Main()
+        static void Main2()
         {
             for (int i = 0; i < 1000; i++)
                 Test(null);
@@ -54,11 +54,13 @@ namespace Indexer
         static void Test(string[] args)
         {
             Random r = new Random();
-            int length = (int)(r.NextDouble() * 10000);
+            int length = (int)(r.NextDouble() * 1000);
             byte[] data = new byte[length * 16];
+            int[] nums = new int[length];
             for (int i = 0; i < length; i++)
             {
-                byte[] num_bytes = BitConverter.GetBytes(r.Next());
+                nums[i] = r.Next();
+                byte[] num_bytes = BitConverter.GetBytes(nums[i]);
                 Buffer.BlockCopy(num_bytes, 0, data, i * 16, 4);
                 Buffer.BlockCopy(num_bytes, 0, data, i * 16 + 4, 4);
             }
@@ -74,10 +76,18 @@ namespace Indexer
                     throw new Exception("Sorting error!");
                 last_num = num;
             }
-            Console.WriteLine("Test successful");
+            Array.Sort(nums);
+            uint[] index = Functions.Index2(data, 16, 0);
+            for (int i = 0; i < length; i++)
+            {
+                int _i = GetIndex(data, 16, 0, BitConverter.GetBytes(nums[i]), index);
+                if (_i != i)
+                    throw new Exception("Searching/Indexing error!");
+            }
+            Console.WriteLine("Tets complete!");
         }
 
-        static void Main2(string[] args)
+        static void Main(string[] args)
         {
             byte[] titlesIndex = File.ReadAllBytes("titles.index");
             byte[] reverseIndex = File.ReadAllBytes("reverse.index2");
@@ -115,8 +125,8 @@ namespace Indexer
                 Functions.QuickSort(pages, 8, 4, 4);
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
-                    uint titleCRC = BitConverter.ToUInt32(pages, i * 8);
-                    uint freq = BitConverter.ToUInt32(pages, i * 8 + 4);
+                    uint freq = BitConverter.ToUInt32(pages, i * 8);
+                    uint titleCRC = BitConverter.ToUInt32(pages, i * 8 + 4);
                     int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
                     if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
                         throw new Exception("Paradox!");

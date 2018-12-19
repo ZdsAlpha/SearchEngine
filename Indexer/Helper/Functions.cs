@@ -119,7 +119,7 @@ namespace Helper
         }
         public static uint[] Index2(byte[] data, int size, int offset, int left, int right)
         {
-            offset += 1;
+            offset += 2;
             if (data.Length % size != 0) throw new Exception("Invalid data or size.");
             if (offset + 2 > size) throw new Exception("Invalid offset or length.");
             uint[] index = new uint[256 * 256];
