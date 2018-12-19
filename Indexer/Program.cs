@@ -78,7 +78,7 @@ namespace Indexer
             }
         }
 
-        static void Main(string[] args)
+        static void Main3(string[] args)
         {
             byte[] titlesIndex = File.ReadAllBytes("titles.index");
             byte[] reverseIndex = File.ReadAllBytes("reverse.index2");
@@ -129,7 +129,7 @@ namespace Indexer
             }
         }
 
-        static void _Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("Creating index...");
                 if (!Lexicon_outputs.All((path) => File.Exists(path)))
