@@ -24,7 +24,111 @@ namespace Indexer
         const string reverseIndexPath = "reverese.index";
         const string reverseIndexIndexPath = "reverse.index2";
 
-        static void Main(string[] args)
+        static byte[] ReadBytes(string file, long pos, int len)
+        {
+            using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read)) 
+            {
+                using (BinaryReader bn = new BinaryReader(fs))
+                {
+                    fs.Position = pos;
+                    return bn.ReadBytes(len);
+                }
+            }
+        }
+        static int GetIndex(byte[] data, int size, int offset, byte[] obj, uint[] index)
+        {
+            int start;
+            int stop;
+            Functions.BinarySearch(data, size, offset, obj, out start, out stop, index);
+            if (stop - start > 0)
+                throw new Exception("Collision detected!");
+            else if (start == stop)
+                return start;
+            return -1;
+        }
+        static void Main()
+        {
+            for (int i = 0; i < 1000; i++)
+                Test(null);
+        }
+        static void Test(string[] args)
+        {
+            Random r = new Random();
+            int length = (int)(r.NextDouble() * 10000);
+            byte[] data = new byte[length * 16];
+            for (int i = 0; i < length; i++)
+            {
+                byte[] num_bytes = BitConverter.GetBytes(r.Next());
+                Buffer.BlockCopy(num_bytes, 0, data, i * 16, 4);
+                Buffer.BlockCopy(num_bytes, 0, data, i * 16 + 4, 4);
+            }
+            Functions.QuickSort(data, 16, 0, 4);
+            Functions.QuickSort(data, 16, 0, 4);
+            int last_num = int.MinValue;
+            for (int i = 0; i < length; i++)
+            {
+                int num = BitConverter.ToInt32(data, i * 16);
+                if (num != BitConverter.ToInt32(data, i * 16 + 4))
+                    throw new Exception("Block copy error!");
+                if (num < last_num)
+                    throw new Exception("Sorting error!");
+                last_num = num;
+            }
+            Console.WriteLine("Test successful");
+        }
+
+        static void Main2(string[] args)
+        {
+            byte[] titlesIndex = File.ReadAllBytes("titles.index");
+            byte[] reverseIndex = File.ReadAllBytes("reverse.index2");
+            Functions.QuickSort(titlesIndex, 16, 0, 4);
+            Functions.QuickSort(reverseIndex, 16, 0, 4);
+            uint last_num = uint.MinValue;
+            for (int i = 0; i < titlesIndex.Length / 16; i++)
+            {
+                uint num = BitConverter.ToUInt32(titlesIndex, i * 16);
+                if (num < last_num)
+                    throw new Exception("Sorting error!");
+                last_num = num;
+            }
+            last_num = uint.MinValue;
+            for (int i = 0; i < reverseIndex.Length / 16; i++)
+            {
+                uint num = BitConverter.ToUInt32(reverseIndex, i * 16);
+                if (num < last_num)
+                    throw new Exception("Sorting error!");
+                last_num = num;
+            }
+            uint[] titlesIndex2 = Functions.Index2(titlesIndex, 16, 0);
+            uint[] reverseIndex2 = Functions.Index2(reverseIndex, 16, 0);
+            while (true)
+            {
+                Console.WriteLine("Enter word: ");
+                string word = Console.ReadLine();
+                uint wordCRC = Crc32.Compute(word.ToLower());
+                int r_index = GetIndex(reverseIndex, 16, 0, BitConverter.GetBytes(wordCRC), reverseIndex2);
+                if (BitConverter.ToUInt32(reverseIndex, r_index * 16) != wordCRC)
+                    throw new Exception("Paradox!");
+                long r_pos = (long)BitConverter.ToUInt64(reverseIndex, r_index * 16 + 4);
+                int r_len = (int)BitConverter.ToUInt32(reverseIndex, r_index * 16 + 12);
+                byte[] pages = ReadBytes("reverse.index", r_pos, r_len);
+                Functions.QuickSort(pages, 8, 4, 4);
+                for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
+                {
+                    uint titleCRC = BitConverter.ToUInt32(pages, i * 8);
+                    uint freq = BitConverter.ToUInt32(pages, i * 8 + 4);
+                    int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
+                    if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
+                        throw new Exception("Paradox!");
+                    long t_pos = (long)BitConverter.ToUInt64(titlesIndex, t_index * 16 + 4);
+                    int t_len = (int)BitConverter.ToUInt32(titlesIndex, t_index * 16 + 12);
+                    string title = Encoding.UTF8.GetString(ReadBytes("titles.txt", t_pos, t_len)).TrimEnd('\r', '\n');
+                    Console.WriteLine(freq.ToString() + "\t" + title);
+                }
+            }
+        }
+
+        static void _Main(string[] args)
         {
             Console.WriteLine("Creating index...");
                 if (!Lexicon_outputs.All((path) => File.Exists(path)))
@@ -149,7 +253,7 @@ namespace Indexer
         {
             if (!Functions.VerifyIO(ForwardIndex_inputs, ForwardIndex_output)) return false;
             byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
-            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 2);
+            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 0);
 
             FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
@@ -253,7 +357,7 @@ namespace Indexer
             if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
             byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
-            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 2);
+            uint[] lexiconIndex2 = Functions.Index2(lexiconIndex, 16, 0);
 
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 16);
             FileStream forwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);

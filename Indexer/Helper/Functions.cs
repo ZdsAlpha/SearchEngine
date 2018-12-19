@@ -54,6 +54,7 @@ namespace Helper
         }
         private static void quicksort(byte[] data, int size, int offset, int length, int left, int right)
         {
+            Random random = new Random();
             Stack<Tuple<int, int>> stack = new Stack<Tuple<int, int>>();
             stack.Push(new Tuple<int, int>(left, right));
             while (stack.Count != 0)
@@ -62,13 +63,20 @@ namespace Helper
                 left = args.Item1;
                 right = args.Item2;
                 if (left > right || left < 0 || right < 0) continue;
-                int index = partition(data, size, offset, length, left, right);
+                int index = partition(data, size, offset, length, left, right, random);
                 if (index != -1)
                 {
                     stack.Push(new Tuple<int, int>(left, index - 1));
                     stack.Push(new Tuple<int, int>(index + 1, right));
                 }
             }
+        }
+        private static int partition(byte[] data, int size, int offset, int length, int left, int right, Random random)
+        {
+            if (left > right) return -1;
+            int pivot_index = left + (int)Math.Floor((right - left + 1) * random.NextDouble());
+            if (pivot_index != right) swap(data, size, pivot_index, right);
+            return partition(data, size, offset, length, left, right);
         }
         private static int partition(byte[] data, int size, int offset, int length, int left, int right)
         {
@@ -111,6 +119,7 @@ namespace Helper
         }
         public static uint[] Index2(byte[] data, int size, int offset, int left, int right)
         {
+            offset += 1;
             if (data.Length % size != 0) throw new Exception("Invalid data or size.");
             if (offset + 2 > size) throw new Exception("Invalid offset or length.");
             uint[] index = new uint[256 * 256];
