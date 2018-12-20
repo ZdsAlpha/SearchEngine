@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Helper
 {
-    class SafeIntSpace
+    public class SafeIntSpace
     {
         private long _length;
         private ulong[][][][] Array;
@@ -48,7 +48,7 @@ namespace Helper
                 lock (Array)
                     if (Array[Number[3]] == null) Array[Number[3]] = new ulong[byte.MaxValue + 1][][];
             if (Array[Number[3]][Number[2]] == null)
-                lock (Array[3]) 
+                lock (Array[Number[3]]) 
                     if (Array[Number[3]][Number[2]] == null) Array[Number[3]][Number[2]] = new ulong[byte.MaxValue + 1][];
             if (Array[Number[3]][Number[2]][Number[1]] == null)
                 lock (Array[Number[3]][Number[2]]) 

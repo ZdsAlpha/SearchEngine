@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.IO;
+using Zds.Flow.Machinery.Objects;
 using Helper;
-using System.Diagnostics;
+using Zds.Flow.ExceptionHandling;
+using Zds.Flow.Updatables;
 
 namespace Indexer
 {
@@ -148,8 +151,8 @@ namespace Indexer
         static bool Lexicon()
         {
             if (!Functions.VerifyIO(Lexicon_inputs, Lexicon_outputs)) return false;
-            
-            FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 2);
+            Console.WriteLine("Generating lexicon...");
+            FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 32);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
             FileStream lexicon = new FileStream(lexiconPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 16);
             FileStream lexiconIndex = new FileStream(lexiconIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
@@ -160,12 +163,14 @@ namespace Indexer
             BinaryWriter lexiconIndexWriter = new BinaryWriter(lexiconIndex);
 
             Stopwatch stopwatch = new Stopwatch();
-            IntSpace space = new IntSpace();
-            StringBuilder word = new StringBuilder();
-            bool ascii = true;
-            stopwatch.Start();
-            int seconds = 0;
-            for (int page_index = 0; page_index < repositoryIndex.Length / 16; page_index++) 
+            SafeIntSpace space = new SafeIntSpace();
+
+            long totalPages = repositoryIndex.Length / 16;
+            long pagesRead = 0;
+            long pagesProcessed = 0;
+
+            //Creating virtual source
+            for (pagesRead = 0; pagesRead < totalPages; pagesRead++)
             {
                 uint page_id = repositoryIndexReader.ReadUInt32();
                 ulong page_pos = repositoryIndexReader.ReadUInt64();
@@ -174,6 +179,31 @@ namespace Indexer
                     repository.Position = (long)page_pos;
                 string content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
 
+            }
+
+            //Creating Machinery
+            SyncSource<string> source = null;
+            source = new SyncSource<string>(
+                (ref string content) =>
+            {
+                uint page_id = repositoryIndexReader.ReadUInt32();
+                ulong page_pos = repositoryIndexReader.ReadUInt64();
+                uint page_length = repositoryIndexReader.ReadUInt32();
+                if (repository.Position != (long)page_pos)
+                    repository.Position = (long)page_pos;
+                content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
+                pagesRead += 1;
+                if (pagesRead == totalPages)
+                    source.Stop();
+                return true;
+            });
+            AsyncConverter<string, Tuple<uint, byte[]>[]> converter = null;
+            converter = new AsyncConverter<string, Tuple<uint, byte[]>[]>(
+                (string content, ref Tuple<uint, byte[]>[] wordlist) =>
+            {
+                List<Tuple<uint, byte[]>> list = new List<Tuple<uint, byte[]>>();
+                StringBuilder word = new StringBuilder();
+                bool ascii = true;
                 for (int i = 0; i < content.Length; i++)
                 {
                     char c = content[i];
@@ -192,34 +222,88 @@ namespace Indexer
                             if (space.Add(CRC))
                             {
                                 byte[] wordBytes = Encoding.UTF8.GetBytes(_word + "\n");
-                                ulong wordPos = (ulong)lexicon.Position;
-                                uint wordSize = (uint)wordBytes.Length;
-                                lexiconIndexWriter.Write(CRC);
-                                lexiconIndexWriter.Write(wordPos);
-                                lexiconIndexWriter.Write(wordSize);
-                                lexiconWriter.Write(wordBytes);
+                                list.Add(new Tuple<uint, byte[]>(CRC, wordBytes));
                             }
                         }
                         word.Clear();
                         ascii = true;
                     }
                 }
-
-                word.Clear();
-                ascii = true;
-                if (stopwatch.Elapsed.TotalSeconds > seconds)
+                wordlist = list.ToArray();
+                return true;
+            });
+            SyncSink<Tuple<uint, byte[]>[]> sink = null;
+            sink = new SyncSink<Tuple<uint, byte[]>[]>(
+                (Tuple<uint, byte[]>[] wordlist) =>
+            {
+                foreach (var word in wordlist)
                 {
-                    Console.Clear();
-                    Console.WriteLine("Time Elasped: " + stopwatch.Elapsed.ToString());
-                    Console.WriteLine("Processed: " + Functions.SizeSuffix(repository.Position));
-                    Console.WriteLine("Total: " + Functions.SizeSuffix(repository.Length));
-                    Console.WriteLine("Words Count: " + space.Length.ToString());
-                    seconds++;
+                    uint CRC = word.Item1;
+                    byte[] wordBytes = word.Item2;
+                    ulong wordPos = (ulong)lexicon.Position;
+                    uint wordSize = (uint)wordBytes.Length;
+                    lexiconIndexWriter.Write(CRC);
+                    lexiconIndexWriter.Write(wordPos);
+                    lexiconIndexWriter.Write(wordSize);
+                    lexiconWriter.Write(wordBytes);
                 }
-            }
+                pagesProcessed += 1;
+                return true;
+            });
+
+            //Setting up
+            converter.MaxThreads = 16;
+            converter.MustConvert = true;
+
+            //Connecting
+            source.Sink = converter;
+            converter.Sink = sink;
+
+            //Exception handler
+            ExceptionHandler eh = new ConsoleLogger();
+            eh.Add(source);
+            eh.Add(converter);
+            eh.Add(sink);
+
+            //Updater
+            long lastReposPos = 0;
+            long lastPagesRead = 0;
+            long lastPagesProcessed = 0;
+            SyncTimer timer = null;
+            timer = new SyncTimer(
+                (ISyncTimer sender, ref TimeSpan time) =>
+            {
+                long pos_diff = repository.Position - lastReposPos;
+                long pr_diff = pagesRead - lastPagesRead;
+                long pp_diff = pagesProcessed - lastPagesProcessed;
+                Console.Title = "Repos: " + Functions.SizeSuffix(repository.Position) + "/" + Functions.SizeSuffix(repository.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s)" +
+                                "PR: " + pagesRead.ToString() + "/" + totalPages.ToString() + "(" + pr_diff.ToString() + "/s)" +
+                                "PW: " + pagesProcessed.ToString() + "/" + totalPages.ToString() + "(" + pp_diff.ToString() + "/s)";
+                lastReposPos = repository.Position;
+                lastPagesRead = pagesRead;
+                lastPagesProcessed = pagesProcessed;
+            });
+
+            //Starting pipeline
+            stopwatch.Start();
+            timer.Start();
+            source.Start();
+            converter.Start();
+            sink.Start();
+
+            //Waiting for pipeline to finish
+            while (pagesProcessed != totalPages)
+                System.Threading.Thread.Sleep(1);
             stopwatch.Stop();
-            Console.WriteLine("Total time: " + stopwatch.Elapsed.ToString());
-            
+
+            //Cleaning resources
+            timer.Destroy();
+            source.Destroy();
+            converter.Destroy();
+            sink.Destroy();
+
+            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
             lexiconWriter.Flush();
             lexiconIndexWriter.Flush();
 
