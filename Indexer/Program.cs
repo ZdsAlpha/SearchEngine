@@ -152,10 +152,10 @@ namespace Indexer
         {
             if (!Functions.VerifyIO(Lexicon_inputs, Lexicon_outputs)) return false;
             Console.WriteLine("Generating lexicon...");
-            FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 32);
-            FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
-            FileStream lexicon = new FileStream(lexiconPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 16);
-            FileStream lexiconIndex = new FileStream(lexiconIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
+            FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
+            FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
+            FileStream lexicon = new FileStream(lexiconPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+            FileStream lexiconIndex = new FileStream(lexiconIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
 
             BinaryReader repositoryReader = new BinaryReader(repository);
             BinaryReader repositoryIndexReader = new BinaryReader(repositoryIndex);
@@ -169,34 +169,7 @@ namespace Indexer
             long pagesRead = 0;
             long pagesProcessed = 0;
 
-            //Creating virtual source
-            for (pagesRead = 0; pagesRead < totalPages; pagesRead++)
-            {
-                uint page_id = repositoryIndexReader.ReadUInt32();
-                ulong page_pos = repositoryIndexReader.ReadUInt64();
-                uint page_length = repositoryIndexReader.ReadUInt32();
-                if (repository.Position != (long)page_pos)
-                    repository.Position = (long)page_pos;
-                string content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
-
-            }
-
             //Creating Machinery
-            SyncSource<string> source = null;
-            source = new SyncSource<string>(
-                (ref string content) =>
-            {
-                uint page_id = repositoryIndexReader.ReadUInt32();
-                ulong page_pos = repositoryIndexReader.ReadUInt64();
-                uint page_length = repositoryIndexReader.ReadUInt32();
-                if (repository.Position != (long)page_pos)
-                    repository.Position = (long)page_pos;
-                content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
-                pagesRead += 1;
-                if (pagesRead == totalPages)
-                    source.Stop();
-                return true;
-            });
             AsyncConverter<string, Tuple<uint, byte[]>[]> converter = null;
             converter = new AsyncConverter<string, Tuple<uint, byte[]>[]>(
                 (string content, ref Tuple<uint, byte[]>[] wordlist) =>
@@ -256,12 +229,10 @@ namespace Indexer
             converter.MustConvert = true;
 
             //Connecting
-            source.Sink = converter;
             converter.Sink = sink;
 
             //Exception handler
             ExceptionHandler eh = new ConsoleLogger();
-            eh.Add(source);
             eh.Add(converter);
             eh.Add(sink);
 
@@ -276,9 +247,9 @@ namespace Indexer
                 long pos_diff = repository.Position - lastReposPos;
                 long pr_diff = pagesRead - lastPagesRead;
                 long pp_diff = pagesProcessed - lastPagesProcessed;
-                Console.Title = "Repos: " + Functions.SizeSuffix(repository.Position) + "/" + Functions.SizeSuffix(repository.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s)" +
-                                "PR: " + pagesRead.ToString() + "/" + totalPages.ToString() + "(" + pr_diff.ToString() + "/s)" +
-                                "PW: " + pagesProcessed.ToString() + "/" + totalPages.ToString() + "(" + pp_diff.ToString() + "/s)";
+                Console.Title = "Repos: " + Functions.SizeSuffix(repository.Position) + "/" + Functions.SizeSuffix(repository.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
+                                "PR: " + pagesRead.ToString() + "/" + totalPages.ToString() + "(" + pr_diff.ToString() + "/s), " +
+                                "PW: " + pagesProcessed.ToString() + "/" + totalPages.ToString() + "(" + pp_diff.ToString() + "/s), ";
                 lastReposPos = repository.Position;
                 lastPagesRead = pagesRead;
                 lastPagesProcessed = pagesProcessed;
@@ -287,18 +258,29 @@ namespace Indexer
             //Starting pipeline
             stopwatch.Start();
             timer.Start();
-            source.Start();
+            //source.Start();
             converter.Start();
             sink.Start();
 
-            //Waiting for pipeline to finish
+            //Creating virtual source
+            for (pagesRead = 0; pagesRead < totalPages; pagesRead++)
+            {
+                uint page_id = repositoryIndexReader.ReadUInt32();
+                ulong page_pos = repositoryIndexReader.ReadUInt64();
+                uint page_length = repositoryIndexReader.ReadUInt32();
+                if (repository.Position != (long)page_pos)
+                    repository.Position = (long)page_pos;
+                string content = Encoding.UTF8.GetString(repositoryReader.ReadBytes((int)page_length));
+                while (!converter.Receive(content)) { }
+            }
+
+            //Waiting to finish
             while (pagesProcessed != totalPages)
                 System.Threading.Thread.Sleep(1);
             stopwatch.Stop();
 
             //Cleaning resources
             timer.Destroy();
-            source.Destroy();
             converter.Destroy();
             sink.Destroy();
 
