@@ -365,7 +365,14 @@ namespace Indexer
                                 string _word = word.ToString();
                                 uint CRC = Crc32.Compute(_word);
                                 HashValuePair<uint> node = new HashValuePair<uint>(CRC, 0);
-                                HashValuePair<uint> _node = tree.Insert(node);
+                                HashValuePair<uint> _node;
+                                if (tree == null)
+                                {
+                                    tree = new BinaryTree<HashValuePair<uint>>(node);
+                                    _node = node;
+                                }
+                                else
+                                    _node = tree.Insert(node);
                                 if (node == _node) totalWords++;
                                 _node.Value++;
                             }
@@ -388,7 +395,7 @@ namespace Indexer
                             data = memory.ToArray();
                         }
                     }
-                    Functions.QuickSort(data, 8, 4, 4);
+                    //Functions.QuickSort(data, 8, 4, 4);
                     wordsfreq = new Tuple<uint, byte[]>(page_id, data);
                     return true;
                 });
