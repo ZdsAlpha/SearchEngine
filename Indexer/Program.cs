@@ -228,8 +228,6 @@ namespace Indexer
             //Setting up
             converter.MaxThreads = 8;
             converter.MustConvert = true;
-            converter.Queue = new Zds.Flow.Collections.SafeRound<string>(1024 * 8);
-            sink.Queue = new Zds.Flow.Collections.SafeRound<Tuple<uint, byte[]>[]>(1024 * 8);
             converter.Recursive = true;
             sink.Recursive = true;
 
@@ -413,8 +411,6 @@ namespace Indexer
             //Setting up
             converter.MaxThreads = 8;
             converter.MustConvert = true;
-            converter.Queue = new Zds.Flow.Collections.SafeRound<Tuple<uint, string>>(1024 * 8);
-            sink.Queue = new Zds.Flow.Collections.SafeRound<Tuple<uint, byte[]>>(1024 * 8);
             converter.Recursive = true;
             sink.Recursive = true;
 
