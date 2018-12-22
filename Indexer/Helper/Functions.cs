@@ -202,7 +202,7 @@ namespace Helper
                     break;
                 }
             byte[] index_index_bin = new byte[4];
-            Buffer.BlockCopy(obj, obj.Length - depth - 1, index_index_bin, 0, depth);
+            Buffer.BlockCopy(obj, obj.Length - depth, index_index_bin, 0, depth);
             int index_index = BitConverter.ToInt32(index_index_bin, 0);
             if (is_zero)
                 left = 0;
