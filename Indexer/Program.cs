@@ -4,11 +4,11 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.IO;
+using System.Threading;
 using Zds.Flow.Machinery.Objects;
-using Helper;
 using Zds.Flow.ExceptionHandling;
 using Zds.Flow.Updatables;
-using System.Threading;
+using Helper;
 
 namespace Indexer
 {
@@ -142,8 +142,8 @@ namespace Indexer
                     if (!SortLexicon()) throw new Exception("Unable to sort lexicon!");
                 if (!ForwardIndex_output.All((path) => File.Exists(path)))
                     if (!ForwardIndex()) throw new Exception("Unable to forward index!");
-                if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
-                    if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
+                //if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
+                //    if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
                 Console.WriteLine("Index created!");
             Console.ReadKey();
         }
@@ -221,7 +221,7 @@ namespace Indexer
                     lexiconIndexWriter.Write(wordSize);
                     lexiconWriter.Write(wordBytes);
                 }
-                pagesProcessed += 1;
+                Interlocked.Increment(ref pagesProcessed);
                 return true;
             });
 
@@ -322,7 +322,7 @@ namespace Indexer
         static bool ForwardIndex()
         {
             if (!Functions.VerifyIO(ForwardIndex_inputs, ForwardIndex_output)) return false;
-
+            Console.WriteLine("Generating forward index...");
             FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 16);
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 32);
@@ -395,7 +395,6 @@ namespace Indexer
                             data = memory.ToArray();
                         }
                     }
-                    //Functions.QuickSort(data, 8, 4, 4);
                     wordsfreq = new Tuple<uint, byte[]>(page_id, data);
                     return true;
                 });
@@ -411,7 +410,7 @@ namespace Indexer
                     forwardIndexIndexWriter.Write(position);
                     forwardIndexIndexWriter.Write(length);
                     forwardIndexWriter.Write(data);
-                    pagesProcessed += 1;
+                    Interlocked.Increment(ref pagesProcessed);
                     return true;
                 });
 
@@ -479,6 +478,22 @@ namespace Indexer
             sink.Destroy();
 
             Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
+            forwardIndexWriter.Flush();
+            forwardIndexIndexWriter.Flush();
+
+            forwardIndex.Flush();
+            forwardIndexIndex.Flush();
+
+            repositoryReader.Dispose();
+            repositoryIndexReader.Dispose();
+            forwardIndexWriter.Dispose();
+            forwardIndexIndexWriter.Dispose();
+
+            repository.Dispose();
+            repositoryIndex.Dispose();
+            forwardIndex.Dispose();
+            forwardIndexIndex.Dispose();
             return true;
         }
         static string[] ReverseIndex_inputs = new string[] {lexiconSortedIndexPath, forwardIndexPath, forwardIndexIndexPath };
