@@ -55,6 +55,26 @@ namespace Indexer
 
         static void Main(string[] args)
         {
+            byte[] lexicon = File.ReadAllBytes("lexicon_sorted.index");
+            uint[] lexicon3 = Functions.Index(lexicon, 16, 0, 3);
+            byte[] frequency = File.ReadAllBytes("frequency.bin");
+            Functions.QuickSort(frequency, 8, 4, 4);
+            for (int i = 0; i < 1000; i++)
+            {
+                int freq_pos = (frequency.Length / 8 - i - 1) * 8;
+                uint CRC = BitConverter.ToUInt32(frequency, freq_pos);
+                uint freq = BitConverter.ToUInt32(frequency, freq_pos + 4);
+                int index = Functions.GetIndex(lexicon, 16, 0, BitConverter.GetBytes(CRC), lexicon3);
+                long w_pos = (long)BitConverter.ToUInt64(lexicon, index * 16 + 4);
+                int w_len = (int)BitConverter.ToUInt32(lexicon, index * 16 + 12);
+                string word = Encoding.UTF8.GetString(ReadBytes("lexicon.txt", w_pos, w_len)).TrimEnd('\r', '\n');
+                Console.WriteLine(word + "\t" + freq.ToString());
+            }
+            Console.ReadKey();
+        }
+
+        static void Main2(string[] args)
+        {
             byte[] wordIndex = File.ReadAllBytes("lexicon_sorted.index");
             byte[] forwardIndex = File.ReadAllBytes("forwrad_index.index");
             Functions.QuickSort(forwardIndex, 16, 0, 4);
@@ -504,15 +524,26 @@ namespace Indexer
         static bool WordsCount()
         {
             const uint wordsPerLock = 256;
+            const uint chunkSize = 1024 * 16;
             if (!Functions.VerifyIO(WordsCount_inputs, WordsCount_output)) return false;
             Console.WriteLine("Counting words...");
             byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
+            FileStream frequencyStream = new FileStream(frequencyPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+
+            BinaryReader forwardIndexReader = new BinaryReader(forwardIndex);
+            BinaryWriter frequencyWriter = new BinaryWriter(frequencyStream);
 
             Stopwatch stopwatch = new Stopwatch();
             uint[] lexiconIndex3 = Functions.Index(lexiconIndex, 16, 0, 3);
             long[] frequency = new long[lexiconIndex.Length / 16];
-            object[] locks = new object[(int)Math.Ceiling((double)frequency.Length / wordsPerLock)];
+            object[] locks = new object[frequency.Length / wordsPerLock + 1];
+            long totalChunks = (long)Math.Ceiling((decimal)forwardIndex.Length / (16 * chunkSize));
+            long chunksRead = 0;
+            long chunksProcessed = 0;
+
+            for (int i = 0; i < locks.Length; i++)
+                locks[i] = new object();
 
             //Creating Machinery
             AsyncSink<byte[]> sink = null;
@@ -527,16 +558,96 @@ namespace Indexer
                         uint CRC;
                         uint freq;
                         int index;
+                        object index_lock;
                         for (int i = 0; i < words; i++)
                         {
                             CRC = reader.ReadUInt32();
                             freq = reader.ReadUInt32();
-                            
+                            index = Functions.GetIndex(lexiconIndex, 16, 0, BitConverter.GetBytes(CRC), lexiconIndex3);
+                            index_lock = locks[index / wordsPerLock];
+                            lock (index_lock)
+                                frequency[index] += freq;
                         }
                     }
                 }
+                Interlocked.Increment(ref chunksProcessed);
                 return true;
             });
+
+            //Setting up
+            sink.MaxThreads = 8;
+            sink.Recursive = true;
+
+            //Exception handler
+            ExceptionHandler eh = new ConsoleLogger();
+            eh.Add(sink);
+
+            //Updater
+            long lastIndexPos = 0;
+            long lastChunksRead = 0;
+            long lastChunksProcessed = 0;
+            SyncTimer timer = null;
+            timer = new SyncTimer(
+                (ISyncTimer sender, ref TimeSpan time) =>
+                {
+                    long pos_diff = forwardIndex.Position - lastIndexPos;
+                    long pr_diff = chunksRead - lastChunksRead;
+                    long pp_diff = chunksProcessed - lastChunksProcessed;
+                    Console.Title = "Index: " + Functions.SizeSuffix(forwardIndex.Position) + "/" + Functions.SizeSuffix(forwardIndex.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
+                                    "CR: " + chunksRead.ToString() + "/" + totalChunks.ToString() + "(" + pr_diff.ToString() + "/s), " +
+                                    "CP: " + chunksProcessed.ToString() + "/" + totalChunks.ToString() + "(" + pp_diff.ToString() + "/s), ";
+                    lastIndexPos = forwardIndex.Position;
+                    lastChunksRead = chunksRead;
+                    lastChunksProcessed = chunksProcessed;
+                });
+
+            //Starting pipeline
+            stopwatch.Start();
+            timer.Start();
+            sink.Start();
+
+            //Creating virtual source
+            for (int i = 0; i < forwardIndex.Length / (16 * chunkSize); i++)
+            {
+                byte[] data = forwardIndexReader.ReadBytes((int)(chunkSize * 16));
+                while (!sink.Receive(data))
+                    Thread.Sleep(1);
+                chunksRead += 1;
+            }
+            long remaining = forwardIndex.Length % (16 * chunkSize);
+            if (remaining > 0)
+            {
+                byte[] data = forwardIndexReader.ReadBytes((int)remaining);
+                while (!sink.Receive(data))
+                    Thread.Sleep(1);
+                chunksRead += 1;
+            }
+
+            //Waiting to finish
+            while (chunksProcessed != totalChunks)
+                Thread.Sleep(1);
+            stopwatch.Stop();
+
+            //Cleaning resources
+            timer.Destroy();
+            sink.Destroy();
+
+            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
+            for (int i = 0; i < frequency.Length; i++)
+            {
+                frequencyWriter.Write(lexiconIndex, i * 16, 4);
+                frequencyWriter.Write((uint)frequency[i]);
+            }
+
+            frequencyWriter.Flush();
+            frequencyStream.Flush();
+
+            forwardIndexReader.Dispose();
+            frequencyWriter.Dispose();
+
+            forwardIndex.Dispose();
+            frequencyStream.Dispose();
             return true;
         }
         static string[] ReverseIndex_inputs = new string[] {lexiconSortedIndexPath, forwardIndexPath, forwardIndexIndexPath };

@@ -82,6 +82,7 @@ namespace Helper
         {
             if (left > right) return -1;
             int end = left;
+            bool is_equal = true;
             byte[] pivot = new byte[length];
             Buffer.BlockCopy(data, right * size + offset, pivot, 0, length);
             for (int i = left; i < right; i++)
