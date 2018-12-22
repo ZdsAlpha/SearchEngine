@@ -30,6 +30,8 @@ namespace Indexer
 
         const string frequencyPath = "frequency.bin";
 
+        const string frequencySortedPath = "frequency_sorted.bin";
+
         static byte[] ReadBytes(string file, long pos, int len)
         {
             using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read)) 
@@ -53,7 +55,7 @@ namespace Indexer
             return -1;
         }
 
-        static void Main(string[] args)
+        static void Main1(string[] args)
         {
             byte[] lexicon = File.ReadAllBytes("lexicon_sorted.index");
             uint[] lexicon3 = Functions.Index(lexicon, 16, 0, 3);
@@ -154,7 +156,7 @@ namespace Indexer
             }
         }
 
-        static void _Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("Creating index...");
             if (!Lexicon_outputs.All((path) => File.Exists(path)))
@@ -165,8 +167,10 @@ namespace Indexer
                 if (!ForwardIndex()) throw new Exception("Unable to forward index!");
             if (!WordsCount_output.All((path) => File.Exists(path)))
                 if (!WordsCount()) throw new Exception("Unable to count words!");
-            //if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
-            //    if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
+            if (!SortFrequency_output.All((path) => File.Exists(path)))
+                if (!SortFrequency()) throw new Exception("Unable to sort frequencies!");
+            if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
+                if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
             Console.WriteLine("Index created!");
             Console.ReadKey();
         }
@@ -632,13 +636,15 @@ namespace Indexer
             timer.Destroy();
             sink.Destroy();
 
-            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+            Console.WriteLine("Flushing...");
 
             for (int i = 0; i < frequency.Length; i++)
             {
                 frequencyWriter.Write(lexiconIndex, i * 16, 4);
                 frequencyWriter.Write((uint)frequency[i]);
             }
+
+            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
 
             frequencyWriter.Flush();
             frequencyStream.Flush();
@@ -650,9 +656,162 @@ namespace Indexer
             frequencyStream.Dispose();
             return true;
         }
-        static string[] ReverseIndex_inputs = new string[] {lexiconSortedIndexPath, forwardIndexPath, forwardIndexIndexPath };
+        static string[] SortFrequency_inputs = new string[] { frequencyPath };
+        static string[] SortFrequency_output = new string[] { frequencySortedPath };
+        static bool SortFrequency()
+        {
+            if (!Functions.VerifyIO(SortFrequency_inputs, SortFrequency_output)) return false;
+            Console.WriteLine("Sorting frequencies...");
+            byte[] data = File.ReadAllBytes(frequencyPath);
+            Functions.QuickSort(data, 8, 0, 4);
+            File.WriteAllBytes(frequencySortedPath, data);
+            return true;
+        }
+        static string[] ReverseIndex_inputs = new string[] { frequencySortedPath, forwardIndexPath, forwardIndexIndexPath };
         static string[] ReverseIndex_outputs = new string[] { reverseIndexPath, reverseIndexIndexPath };
         static bool ReverseIndex()
+        {
+            const int chunkSize = 1024 * 1024 * 1024;
+            if (chunkSize % 4 != 0) throw new Exception("Invalid chunk size");
+            if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
+            Console.WriteLine("Creating reverse indices...");
+            byte[] frequencyBytes = File.ReadAllBytes(frequencySortedPath);
+            uint[] frequencyIndex = Functions.Index(frequencyBytes, 8, 0, 3);
+            uint[] frequency = new uint[frequencyBytes.Length / 8];
+            for (int i = 0; i < frequency.Length; i++)
+                frequency[i] = BitConverter.ToUInt32(frequencyBytes, i * 8 + 4);
+            uint[] wordsOffsets = new uint[frequency.Length];
+            for (int i = 1; i < frequency.Length; i++)
+                wordsOffsets[i] = wordsOffsets[i - 1] + frequency[i - 1];
+            uint[] written = new uint[frequency.Length];
+
+            FileStream ForwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
+            FileStream ForwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
+            FileStream ReverseIndex = new FileStream(reverseIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 64);
+            FileStream ReverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+
+            BinaryReader ForwardIndexReader = new BinaryReader(ForwardIndex);
+            BinaryReader ForwardIndexIndexReader = new BinaryReader(ForwardIndexIndex);
+            BinaryWriter ReverseIndexWriter = new BinaryWriter(ReverseIndex);
+            BinaryWriter ReverseIndexIndexWriter = new BinaryWriter(ReverseIndexIndex);
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            int iterations = (int)Math.Ceiling((decimal)ForwardIndex.Length / chunkSize);
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                int currentChunkSize;
+                currentChunkSize = chunkSize;
+                if (iteration == iterations - 1 && ForwardIndex.Length % chunkSize != 0)
+                    currentChunkSize = (int)(ForwardIndex.Length % chunkSize);
+                byte[] chunk = new byte[chunkSize];
+                ForwardIndex.Position = 0;
+                ForwardIndexIndex.Position = 0;
+                Console.WriteLine("Resolving chunk (" + iteration.ToString() + "," + iterations.ToString() + ")");
+
+                long totalPages = ForwardIndexIndex.Length / 16;
+                long pagesRead = 0;
+                long pagesProcessed = 0;
+
+                //Creating Machinery
+                AsyncSink<Tuple<uint, byte[]>> sink = null;
+                sink = new AsyncSink<Tuple<uint, byte[]>>(
+                    (Tuple<uint, byte[]> wordsFreq) =>
+                    {
+                        uint CRC = wordsFreq.Item1;
+                        byte[] data = wordsFreq.Item2;
+                        int words = data.Length / 8;
+                        
+                        Interlocked.Increment(ref pagesProcessed);
+                        return true;
+                    });
+
+                //Setting up
+                sink.MaxThreads = 8;
+                sink.Recursive = true;
+
+                //Exception handler
+                ExceptionHandler eh = new ConsoleLogger();
+                eh.Add(sink);
+
+                //Updater
+                long lastIndexPos = 0;
+                long lastChunksRead = 0;
+                long lastChunksProcessed = 0;
+                SyncTimer timer = null;
+                timer = new SyncTimer(
+                    (ISyncTimer sender, ref TimeSpan time) =>
+                    {
+                        long pos_diff = forwardIndex.Position - lastIndexPos;
+                        long pr_diff = chunksRead - lastChunksRead;
+                        long pp_diff = chunksProcessed - lastChunksProcessed;
+                        Console.Title = "Index: " + Functions.SizeSuffix(forwardIndex.Position) + "/" + Functions.SizeSuffix(forwardIndex.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
+                                        "CR: " + chunksRead.ToString() + "/" + totalChunks.ToString() + "(" + pr_diff.ToString() + "/s), " +
+                                        "CP: " + chunksProcessed.ToString() + "/" + totalChunks.ToString() + "(" + pp_diff.ToString() + "/s), ";
+                        lastIndexPos = forwardIndex.Position;
+                        lastChunksRead = chunksRead;
+                        lastChunksProcessed = chunksProcessed;
+                    });
+
+                //Starting pipeline
+                stopwatch.Start();
+                timer.Start();
+                sink.Start();
+
+                //Creating virtual source
+                for (int i = 0; i < forwardIndex.Length / (16 * chunkSize); i++)
+                {
+                    byte[] data = forwardIndexReader.ReadBytes((int)(chunkSize * 16));
+                    while (!sink.Receive(data))
+                        Thread.Sleep(1);
+                    chunksRead += 1;
+                }
+                long remaining = forwardIndex.Length % (16 * chunkSize);
+                if (remaining > 0)
+                {
+                    byte[] data = forwardIndexReader.ReadBytes((int)remaining);
+                    while (!sink.Receive(data))
+                        Thread.Sleep(1);
+                    chunksRead += 1;
+                }
+
+                //Waiting to finish
+                while (chunksProcessed != totalChunks)
+                    Thread.Sleep(1);
+                stopwatch.Stop();
+
+                //Cleaning resources
+                timer.Destroy();
+                sink.Destroy();
+
+                Console.WriteLine("Writing chunk...");
+                ReverseIndexWriter.Write(chunk);
+            }
+
+            stopwatch.Stop();
+
+            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
+            ReverseIndexWriter.Flush();
+            ReverseIndexIndexWriter.Flush();
+
+            ReverseIndex.Flush();
+            ReverseIndexIndex.Flush();
+
+            ForwardIndexReader.Dispose();
+            ForwardIndexIndexReader.Dispose();
+            ReverseIndexWriter.Dispose();
+            ReverseIndexIndexWriter.Dispose();
+
+            ForwardIndex.Dispose();
+            ForwardIndexIndex.Dispose();
+            ReverseIndex.Dispose();
+            ReverseIndexIndex.Dispose();
+
+            return true;
+        }
+        static bool _ReverseIndex()
         {
             if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
