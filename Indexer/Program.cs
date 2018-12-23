@@ -25,14 +25,16 @@ namespace Indexer
         const string forwardIndexPath = "forward_index.bin";
         const string forwardIndexIndexPath = "forwrad_index.index";
 
-        const string reverseIndexPath = "reverse_index.bin";
-        const string reverseIndexIndexPath = "reverse_index.index";
-
         const string frequencyPath = "frequency.bin";
         const string wordsCountPath = "wordscount.bin";
 
         const string frequencySortedPath = "frequency_sorted.bin";
         const string wordsCountSortedPath = "wordscount_sorted.bin";
+
+        const string reverseIndexPath = "reverse_index.bin";
+        const string reverseIndexIndexPath = "reverse_index.index";
+
+        const string reverseIndexIndexSortedPath = "reverse_index_sorted.index";
 
         static byte[] ReadBytes(string file, long pos, int len)
         {
@@ -175,6 +177,8 @@ namespace Indexer
                 if (!SortWordsCount()) throw new Exception("Unable to sort words count!");
             if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
                 if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
+            if (!SortReverseIndex_outputs.All((path) => File.Exists(path)))
+                if (!SortReverseIndex()) throw new Exception("Unable to sort reverse index!");
             Console.WriteLine("Index created!");
             Console.ReadKey();
         }
@@ -867,10 +871,16 @@ namespace Indexer
 
             return true;
         }
-
+        static string[] SortReverseIndex_inputs = new string[] { reverseIndexIndexPath };
+        static string[] SortReverseIndex_outputs = new string[] { reverseIndexIndexSortedPath };
         static bool SortReverseIndex()
         {
-
+            if (!Functions.VerifyIO(SortReverseIndex_inputs, SortReverseIndex_outputs)) return false;
+            Console.WriteLine("Sorting reverse index...");
+            byte[] data = File.ReadAllBytes(reverseIndexIndexPath);
+            Functions.QuickSort(data, 8, 0, 4);
+            File.WriteAllBytes(reverseIndexIndexSortedPath, data);
+            return true;
         }
         static bool _ReverseIndex()
         {
