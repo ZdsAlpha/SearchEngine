@@ -82,21 +82,14 @@ namespace Helper
         {
             if (left > right) return -1;
             int end = left;
-            bool all_equal = true;
             byte[] pivot = new byte[length];
             Buffer.BlockCopy(data, right * size + offset, pivot, 0, length);
             for (int i = left; i < right; i++)
             {
-                bool is_equal = false;
                 bool is_less = true;
                 for (int j = length - 1; j >= 0; j--)
                     if (j == 0)
-                    {
-                        if (data[i * size + offset + j] < pivot[j])
-                            is_less = true;
-                        else if (data[i * size + offset + j] == pivot[j])
-                            is_equal = true;
-                    }
+                        is_less = data[i * size + offset + j] < pivot[j];
                     else if (data[i * size + offset + j] < pivot[j])
                         break;
                     else if (data[i * size + offset + j] > pivot[j])
@@ -104,21 +97,12 @@ namespace Helper
                         is_less = false;
                         break;
                     }
-                if (all_equal && is_equal)
-                {
-                    end++;
-                }
-                else if (is_less)
+                if (is_less)
                 {
                     swap(data, size, i, end);
                     end++;
                 }
-                else
-                {
-                    all_equal = false;
-                }
             }
-            if (all_equal) return -1;
             swap(data, size, end, right);
             return end;
         }

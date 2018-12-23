@@ -112,7 +112,7 @@ namespace Indexer
         static void Main3(string[] args)
         {
             byte[] titlesIndex = File.ReadAllBytes("titles.index");
-            byte[] reverseIndex = File.ReadAllBytes("reverse.index2");
+            byte[] reverseIndex = File.ReadAllBytes("reverse_index.index");
             Functions.QuickSort(titlesIndex, 16, 0, 4);
             Functions.QuickSort(reverseIndex, 16, 0, 4);
             uint last_num = uint.MinValue;
@@ -143,7 +143,7 @@ namespace Indexer
                     throw new Exception("Paradox!");
                 long r_pos = (long)BitConverter.ToUInt64(reverseIndex, r_index * 16 + 4);
                 int r_len = (int)BitConverter.ToUInt32(reverseIndex, r_index * 16 + 12);
-                byte[] pages = ReadBytes("reverse.index", r_pos, r_len);
+                byte[] pages = ReadBytes("reverse_index.bin", r_pos, r_len);
                 Functions.QuickSort(pages, 8, 4, 4);
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
@@ -729,6 +729,14 @@ namespace Indexer
             BinaryWriter reverseIndexWriter = new BinaryWriter(reverseIndex);
             BinaryWriter reverseIndexIndexWriter = new BinaryWriter(reverseIndexIndex);
 
+            long cf = 0;
+            for (int i = 0; i < wordsCount.Length; i++)
+            {
+                if (wordsCount[i] == 0) throw new Exception("Invalid!");
+                cf += wordsCount[i];
+            }
+            if (cf * 8 != forwardIndex.Length) throw new Exception("Invalid!");
+
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
@@ -766,11 +774,11 @@ namespace Indexer
                             byte[] freq = new byte[4];
                             Buffer.BlockCopy(data, i * 8 + 4, freq, 0, 4);
                             int index = Functions.GetIndex(wordsCountBytes, 8, 0, wordCRC, wordsCountIndexIndex);
-                            long position;
+                            long position = -1;
                             lock (locks[index / wordsPerLock]) 
                             {
-                                position = (wordsOffsets[index] + written[index] + 1) * 8;
-                                if (position < file_start || position >= file_end)
+                                position = (wordsOffsets[index] + written[index]) * 8;
+                                if (written[index] == wordsCount[index] || (position < file_start || position >= file_end))
                                     continue;
                                 written[index]++;
                                 if (written[index] > wordsCount[index])
@@ -860,7 +868,9 @@ namespace Indexer
 
             for (int i = 0; i < wordsCount.Length; i++)
             {
-                if (written[i] != wordsCount[i])
+                long _written = written[i];
+                long _count = wordsCount[i];
+                if (_written != _count)
                     throw new Exception("Reverse index corrupted!");
             }
 
@@ -889,7 +899,7 @@ namespace Indexer
             if (!Functions.VerifyIO(SortReverseIndex_inputs, SortReverseIndex_outputs)) return false;
             Console.WriteLine("Sorting reverse index...");
             byte[] data = File.ReadAllBytes(reverseIndexIndexPath);
-            Functions.QuickSort(data, 8, 0, 4);
+            Functions.QuickSort(data, 16, 0, 4);
             File.WriteAllBytes(reverseIndexIndexSortedPath, data);
             return true;
         }
