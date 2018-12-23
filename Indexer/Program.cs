@@ -702,7 +702,7 @@ namespace Indexer
         static bool ReverseIndex()
         {
             const uint wordsPerLock = 256;
-            const int chunkSize = 1024 * 1024 * 1024;
+            const int chunkSize = (int)(1024 * 1024 * 1024 * (decimal)1.5);
             if (chunkSize % 4 != 0) throw new Exception("Invalid chunk size");
             if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
@@ -711,7 +711,7 @@ namespace Indexer
             uint[] wordsCount = new uint[wordsCountBytes.Length / 8];
             for (int i = 0; i < wordsCount.Length; i++)
                 wordsCount[i] = BitConverter.ToUInt32(wordsCountBytes, i * 8 + 4);
-            uint[] wordsOffsets = new uint[wordsCount.Length];
+            long[] wordsOffsets = new long[wordsCount.Length];
             for (int i = 1; i < wordsCount.Length; i++)
                 wordsOffsets[i] = wordsOffsets[i - 1] + wordsCount[i - 1];
             uint[] written = new uint[wordsCount.Length];
@@ -737,9 +737,9 @@ namespace Indexer
             {
                 long currentChunkSize;
                 currentChunkSize = chunkSize;
-                if (iteration == iterations - 1 && forwardIndex.Length % chunkSize != 0)
+                if (iteration == iterations - 1)
                     currentChunkSize = (int)(forwardIndex.Length % chunkSize);
-                byte[] chunk = new byte[chunkSize];
+                byte[] chunk = new byte[currentChunkSize];
                 forwardIndex.Position = 0;
                 forwardIndexIndex.Position = 0;
                 Console.WriteLine("Resolving chunk (" + (iteration + 1).ToString() + "/" + iterations.ToString() + ")");
@@ -773,6 +773,8 @@ namespace Indexer
                                 if (position < file_start || position >= file_end)
                                     continue;
                                 written[index]++;
+                                if (written[index] > wordsCount[index])
+                                    throw new Exception("Impossible!");
                             }
                             int local_position = (int)(position - file_start);
                             Buffer.BlockCopy(CRC, 0, chunk, local_position, 4);
@@ -784,6 +786,7 @@ namespace Indexer
 
                 //Setting up
                 sink.MaxThreads = 8;
+                sink.Queue = new Zds.Flow.Collections.SafeRound<Tuple<byte[], byte[]>>(1024 * 8);
                 sink.Recursive = true;
 
                 //Exception handler
@@ -844,14 +847,22 @@ namespace Indexer
 
             for (int i = 0; i < wordsCount.Length; i++)
             {
-                reverseIndexIndexWriter.Write(wordsCountBytes, i * 16, 4);
-                reverseIndexIndexWriter.Write(wordsOffsets[i] * 8);
+                reverseIndexIndexWriter.Write(wordsCountBytes, i * 8, 4);
+                reverseIndexIndexWriter.Write((ulong)wordsOffsets[i] * 8);
                 reverseIndexIndexWriter.Write(wordsCount[i] * 8);
             }
 
             stopwatch.Stop();
 
             Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
+            Console.WriteLine("Verifying reverse index...");
+
+            for (int i = 0; i < wordsCount.Length; i++)
+            {
+                if (written[i] != wordsCount[i])
+                    throw new Exception("Reverse index corrupted!");
+            }
 
             reverseIndexWriter.Flush();
             reverseIndexIndexWriter.Flush();
