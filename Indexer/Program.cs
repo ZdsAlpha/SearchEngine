@@ -29,8 +29,10 @@ namespace Indexer
         const string reverseIndexIndexPath = "reverse_index.index";
 
         const string frequencyPath = "frequency.bin";
+        const string wordsCountPath = "wordscount.bin";
 
         const string frequencySortedPath = "frequency_sorted.bin";
+        const string wordsCountSortedPath = "wordscount_sorted.bin";
 
         static byte[] ReadBytes(string file, long pos, int len)
         {
@@ -169,6 +171,8 @@ namespace Indexer
                 if (!WordsCount()) throw new Exception("Unable to count words!");
             if (!SortFrequency_output.All((path) => File.Exists(path)))
                 if (!SortFrequency()) throw new Exception("Unable to sort frequencies!");
+            if (!SortWordsCount_output.All((path) => File.Exists(path)))
+                if (!SortWordsCount()) throw new Exception("Unable to sort words count!");
             if (!ReverseIndex_outputs.All((path) => File.Exists(path)))
                 if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
             Console.WriteLine("Index created!");
@@ -524,7 +528,7 @@ namespace Indexer
             return true;
         }
         static string[] WordsCount_inputs = new string[] { lexiconSortedIndexPath, forwardIndexPath };
-        static string[] WordsCount_output = new string[] { frequencyPath };
+        static string[] WordsCount_output = new string[] { frequencyPath , wordsCountPath};
         static bool WordsCount()
         {
             const uint wordsPerLock = 256;
@@ -534,13 +538,16 @@ namespace Indexer
             byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream frequencyStream = new FileStream(frequencyPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+            FileStream wordsCountStream = new FileStream(wordsCountPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
 
             BinaryReader forwardIndexReader = new BinaryReader(forwardIndex);
             BinaryWriter frequencyWriter = new BinaryWriter(frequencyStream);
+            BinaryWriter wordsCountWriter = new BinaryWriter(wordsCountStream);
 
             Stopwatch stopwatch = new Stopwatch();
             uint[] lexiconIndex3 = Functions.Index(lexiconIndex, 16, 0, 3);
             long[] frequency = new long[lexiconIndex.Length / 16];
+            long[] wordsCount = new long[frequency.Length];
             object[] locks = new object[frequency.Length / wordsPerLock + 1];
             long totalChunks = (long)Math.Ceiling((decimal)forwardIndex.Length / (16 * chunkSize));
             long chunksRead = 0;
@@ -571,6 +578,7 @@ namespace Indexer
                             index_lock = locks[index / wordsPerLock];
                             lock (index_lock)
                                 frequency[index] += freq;
+                            Interlocked.Increment(ref wordsCount[index]);
                         }
                     }
                 }
@@ -642,18 +650,25 @@ namespace Indexer
             {
                 frequencyWriter.Write(lexiconIndex, i * 16, 4);
                 frequencyWriter.Write((uint)frequency[i]);
+                wordsCountWriter.Write(lexiconIndex, i * 16, 4);
+                wordsCountWriter.Write((uint)wordsCount[i]);
             }
 
             Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
 
             frequencyWriter.Flush();
+            wordsCountWriter.Flush();
+
             frequencyStream.Flush();
+            wordsCountStream.Flush();
 
             forwardIndexReader.Dispose();
             frequencyWriter.Dispose();
+            wordsCountWriter.Dispose();
 
             forwardIndex.Dispose();
             frequencyStream.Dispose();
+            wordsCountStream.Dispose();
             return true;
         }
         static string[] SortFrequency_inputs = new string[] { frequencyPath };
@@ -667,62 +682,98 @@ namespace Indexer
             File.WriteAllBytes(frequencySortedPath, data);
             return true;
         }
-        static string[] ReverseIndex_inputs = new string[] { frequencySortedPath, forwardIndexPath, forwardIndexIndexPath };
+        static string[] SortWordsCount_inputs = new string[] { wordsCountPath };
+        static string[] SortWordsCount_output = new string[] { wordsCountSortedPath };
+        static bool SortWordsCount()
+        {
+            if (!Functions.VerifyIO(SortWordsCount_inputs, SortWordsCount_output)) return false;
+            Console.WriteLine("Sorting words count...");
+            byte[] data = File.ReadAllBytes(wordsCountPath);
+            Functions.QuickSort(data, 8, 0, 4);
+            File.WriteAllBytes(wordsCountSortedPath, data);
+            return true;
+        }
+        static string[] ReverseIndex_inputs = new string[] { wordsCountPath, forwardIndexPath, forwardIndexIndexPath };
         static string[] ReverseIndex_outputs = new string[] { reverseIndexPath, reverseIndexIndexPath };
         static bool ReverseIndex()
         {
+            const uint wordsPerLock = 256;
             const int chunkSize = 1024 * 1024 * 1024;
             if (chunkSize % 4 != 0) throw new Exception("Invalid chunk size");
             if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
-            byte[] frequencyBytes = File.ReadAllBytes(frequencySortedPath);
-            uint[] frequencyIndex = Functions.Index(frequencyBytes, 8, 0, 3);
-            uint[] frequency = new uint[frequencyBytes.Length / 8];
-            for (int i = 0; i < frequency.Length; i++)
-                frequency[i] = BitConverter.ToUInt32(frequencyBytes, i * 8 + 4);
-            uint[] wordsOffsets = new uint[frequency.Length];
-            for (int i = 1; i < frequency.Length; i++)
-                wordsOffsets[i] = wordsOffsets[i - 1] + frequency[i - 1];
-            uint[] written = new uint[frequency.Length];
+            byte[] wordsCountBytes = File.ReadAllBytes(wordsCountPath);
+            uint[] wordsCountIndexIndex = Functions.Index(wordsCountBytes, 8, 0, 3);
+            uint[] wordsCount = new uint[wordsCountBytes.Length / 8];
+            for (int i = 0; i < wordsCount.Length; i++)
+                wordsCount[i] = BitConverter.ToUInt32(wordsCountBytes, i * 8 + 4);
+            uint[] wordsOffsets = new uint[wordsCount.Length];
+            for (int i = 1; i < wordsCount.Length; i++)
+                wordsOffsets[i] = wordsOffsets[i - 1] + wordsCount[i - 1];
+            uint[] written = new uint[wordsCount.Length];
+            object[] locks = new object[wordsCount.Length / wordsPerLock + 1];
+            for (int i = 0; i < locks.Length; i++)
+                locks[i] = new object();
 
-            FileStream ForwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
-            FileStream ForwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
-            FileStream ReverseIndex = new FileStream(reverseIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 64);
-            FileStream ReverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+            FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
+            FileStream forwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
+            FileStream reverseIndex = new FileStream(reverseIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 64);
+            FileStream reverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
 
-            BinaryReader ForwardIndexReader = new BinaryReader(ForwardIndex);
-            BinaryReader ForwardIndexIndexReader = new BinaryReader(ForwardIndexIndex);
-            BinaryWriter ReverseIndexWriter = new BinaryWriter(ReverseIndex);
-            BinaryWriter ReverseIndexIndexWriter = new BinaryWriter(ReverseIndexIndex);
+            BinaryReader forwardIndexReader = new BinaryReader(forwardIndex);
+            BinaryReader forwardIndexIndexReader = new BinaryReader(forwardIndexIndex);
+            BinaryWriter reverseIndexWriter = new BinaryWriter(reverseIndex);
+            BinaryWriter reverseIndexIndexWriter = new BinaryWriter(reverseIndexIndex);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            int iterations = (int)Math.Ceiling((decimal)ForwardIndex.Length / chunkSize);
+            int iterations = (int)Math.Ceiling((decimal)forwardIndex.Length / chunkSize);
             for (int iteration = 0; iteration < iterations; iteration++)
             {
-                int currentChunkSize;
+                long currentChunkSize;
                 currentChunkSize = chunkSize;
-                if (iteration == iterations - 1 && ForwardIndex.Length % chunkSize != 0)
-                    currentChunkSize = (int)(ForwardIndex.Length % chunkSize);
+                if (iteration == iterations - 1 && forwardIndex.Length % chunkSize != 0)
+                    currentChunkSize = (int)(forwardIndex.Length % chunkSize);
                 byte[] chunk = new byte[chunkSize];
-                ForwardIndex.Position = 0;
-                ForwardIndexIndex.Position = 0;
-                Console.WriteLine("Resolving chunk (" + iteration.ToString() + "," + iterations.ToString() + ")");
+                forwardIndex.Position = 0;
+                forwardIndexIndex.Position = 0;
+                Console.WriteLine("Resolving chunk (" + (iteration + 1).ToString() + "/" + iterations.ToString() + ")");
 
-                long totalPages = ForwardIndexIndex.Length / 16;
+                long file_start = iteration * chunkSize;
+                long file_end = iteration * chunkSize + currentChunkSize;
+
+                long totalPages = forwardIndexIndex.Length / 16;
                 long pagesRead = 0;
                 long pagesProcessed = 0;
 
                 //Creating Machinery
-                AsyncSink<Tuple<uint, byte[]>> sink = null;
-                sink = new AsyncSink<Tuple<uint, byte[]>>(
-                    (Tuple<uint, byte[]> wordsFreq) =>
+                AsyncSink<Tuple<byte[], byte[]>> sink = null;
+                sink = new AsyncSink<Tuple<byte[], byte[]>>(
+                    (Tuple<byte[], byte[]> wordsFreq) =>
                     {
-                        uint CRC = wordsFreq.Item1;
+                        byte[] CRC = wordsFreq.Item1;
                         byte[] data = wordsFreq.Item2;
                         int words = data.Length / 8;
-                        
+                        for (int i = 0; i < words; i++)
+                        {
+                            byte[] wordCRC = new byte[4];
+                            Buffer.BlockCopy(data, i * 8, wordCRC, 0, 4);
+                            byte[] freq = new byte[4];
+                            Buffer.BlockCopy(data, i * 8 + 4, freq, 0, 4);
+                            int index = Functions.GetIndex(wordsCountBytes, 8, 0, wordCRC, wordsCountIndexIndex);
+                            long position;
+                            lock (locks[index / wordsPerLock]) 
+                            {
+                                position = (wordsOffsets[index] + written[index] + 1) * 8;
+                                if (position < file_start || position >= file_end)
+                                    continue;
+                                written[index]++;
+                            }
+                            int local_position = (int)(position - file_start);
+                            Buffer.BlockCopy(CRC, 0, chunk, local_position, 4);
+                            Buffer.BlockCopy(freq, 0, chunk, local_position + 4, 4);
+                        }
                         Interlocked.Increment(ref pagesProcessed);
                         return true;
                     });
@@ -737,79 +788,89 @@ namespace Indexer
 
                 //Updater
                 long lastIndexPos = 0;
-                long lastChunksRead = 0;
-                long lastChunksProcessed = 0;
+                long lastPagesRead = 0;
+                long lastPagesProcessed = 0;
                 SyncTimer timer = null;
                 timer = new SyncTimer(
                     (ISyncTimer sender, ref TimeSpan time) =>
                     {
                         long pos_diff = forwardIndex.Position - lastIndexPos;
-                        long pr_diff = chunksRead - lastChunksRead;
-                        long pp_diff = chunksProcessed - lastChunksProcessed;
+                        long pr_diff = pagesRead - lastPagesRead;
+                        long pp_diff = pagesProcessed - lastPagesProcessed;
                         Console.Title = "Index: " + Functions.SizeSuffix(forwardIndex.Position) + "/" + Functions.SizeSuffix(forwardIndex.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
-                                        "CR: " + chunksRead.ToString() + "/" + totalChunks.ToString() + "(" + pr_diff.ToString() + "/s), " +
-                                        "CP: " + chunksProcessed.ToString() + "/" + totalChunks.ToString() + "(" + pp_diff.ToString() + "/s), ";
+                                        "PR: " + pagesRead.ToString() + "/" + totalPages.ToString() + "(" + pr_diff.ToString() + "/s), " +
+                                        "PP: " + pagesProcessed.ToString() + "/" + totalPages.ToString() + "(" + pp_diff.ToString() + "/s), ";
                         lastIndexPos = forwardIndex.Position;
-                        lastChunksRead = chunksRead;
-                        lastChunksProcessed = chunksProcessed;
+                        lastPagesRead = pagesRead;
+                        lastPagesProcessed = pagesProcessed;
                     });
 
                 //Starting pipeline
-                stopwatch.Start();
                 timer.Start();
                 sink.Start();
 
                 //Creating virtual source
-                for (int i = 0; i < forwardIndex.Length / (16 * chunkSize); i++)
+                for (int i = 0; i < forwardIndexIndex.Length / 16; i++)
                 {
-                    byte[] data = forwardIndexReader.ReadBytes((int)(chunkSize * 16));
-                    while (!sink.Receive(data))
+                    byte[] pageCRC = forwardIndexIndexReader.ReadBytes(4);
+                    long page_pos = (long)forwardIndexIndexReader.ReadUInt64();
+                    int page_len = (int)forwardIndexIndexReader.ReadUInt32();
+                    if (forwardIndex.Position != page_pos)
+                        forwardIndex.Position = page_pos;
+                    byte[] data = forwardIndexReader.ReadBytes(page_len);
+                    Tuple<byte[], byte[]> tuple = new Tuple<byte[], byte[]>(pageCRC, data);
+                    while (!sink.Receive(tuple))
                         Thread.Sleep(1);
-                    chunksRead += 1;
-                }
-                long remaining = forwardIndex.Length % (16 * chunkSize);
-                if (remaining > 0)
-                {
-                    byte[] data = forwardIndexReader.ReadBytes((int)remaining);
-                    while (!sink.Receive(data))
-                        Thread.Sleep(1);
-                    chunksRead += 1;
+                    pagesRead += 1;
                 }
 
                 //Waiting to finish
-                while (chunksProcessed != totalChunks)
+                while (pagesProcessed != totalPages)
                     Thread.Sleep(1);
-                stopwatch.Stop();
 
                 //Cleaning resources
                 timer.Destroy();
                 sink.Destroy();
 
                 Console.WriteLine("Writing chunk...");
-                ReverseIndexWriter.Write(chunk);
+                reverseIndexWriter.Write(chunk);
+            }
+
+            Console.WriteLine("Writing index file...");
+
+            for (int i = 0; i < wordsCount.Length; i++)
+            {
+                reverseIndexIndexWriter.Write(wordsCountBytes, i * 16, 4);
+                reverseIndexIndexWriter.Write(wordsOffsets[i] * 8);
+                reverseIndexIndexWriter.Write(wordsCount[i] * 8);
             }
 
             stopwatch.Stop();
 
             Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
 
-            ReverseIndexWriter.Flush();
-            ReverseIndexIndexWriter.Flush();
+            reverseIndexWriter.Flush();
+            reverseIndexIndexWriter.Flush();
 
-            ReverseIndex.Flush();
-            ReverseIndexIndex.Flush();
+            reverseIndex.Flush();
+            reverseIndexIndex.Flush();
 
-            ForwardIndexReader.Dispose();
-            ForwardIndexIndexReader.Dispose();
-            ReverseIndexWriter.Dispose();
-            ReverseIndexIndexWriter.Dispose();
+            forwardIndexReader.Dispose();
+            forwardIndexIndexReader.Dispose();
+            reverseIndexWriter.Dispose();
+            reverseIndexIndexWriter.Dispose();
 
-            ForwardIndex.Dispose();
-            ForwardIndexIndex.Dispose();
-            ReverseIndex.Dispose();
-            ReverseIndexIndex.Dispose();
+            forwardIndex.Dispose();
+            forwardIndexIndex.Dispose();
+            reverseIndex.Dispose();
+            reverseIndexIndex.Dispose();
 
             return true;
+        }
+
+        static bool SortReverseIndex()
+        {
+
         }
         static bool _ReverseIndex()
         {
