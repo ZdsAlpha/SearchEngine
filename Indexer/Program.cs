@@ -148,6 +148,7 @@ namespace Indexer
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
                     uint titleCRC = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8);
+                    if (titleCRC == 0) continue;
                     uint freq = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8 + 4);
                     int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
                     if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
@@ -702,7 +703,7 @@ namespace Indexer
         static bool ReverseIndex()
         {
             const uint wordsPerLock = 256;
-            const int chunkSize = (int)(1024 * 1024 * 1024 * (decimal)1.5);
+            const long chunkSize = (long)(1024 * 1024 * 1024 * (decimal)1.5);
             if (chunkSize % 4 != 0) throw new Exception("Invalid chunk size");
             if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
@@ -740,13 +741,13 @@ namespace Indexer
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            int iterations = (int)Math.Ceiling((decimal)forwardIndex.Length / chunkSize);
-            for (int iteration = 0; iteration < iterations; iteration++)
+            long iterations = (long)Math.Ceiling((decimal)forwardIndex.Length / chunkSize);
+            for (long iteration = 0; iteration < iterations; iteration++)
             {
                 long currentChunkSize;
                 currentChunkSize = chunkSize;
                 if (iteration == iterations - 1)
-                    currentChunkSize = (int)(forwardIndex.Length % chunkSize);
+                    currentChunkSize = forwardIndex.Length % chunkSize;
                 byte[] chunk = new byte[currentChunkSize];
                 forwardIndex.Position = 0;
                 forwardIndexIndex.Position = 0;
@@ -781,8 +782,6 @@ namespace Indexer
                                 if (written[index] == wordsCount[index] || (position < file_start || position >= file_end))
                                     continue;
                                 written[index]++;
-                                if (written[index] > wordsCount[index])
-                                    throw new Exception("Impossible!");
                             }
                             int local_position = (int)(position - file_start);
                             Buffer.BlockCopy(CRC, 0, chunk, local_position, 4);
