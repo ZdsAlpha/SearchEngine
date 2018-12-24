@@ -109,28 +109,11 @@ namespace Indexer
             }
         }
 
-        static void Main3(string[] args)
+        static void Main(string[] args)
         {
             byte[] titlesIndex = File.ReadAllBytes("titles.index");
-            byte[] reverseIndex = File.ReadAllBytes("reverse_index.index");
+            byte[] reverseIndex = File.ReadAllBytes("reverse_index_sorted.index");
             Functions.QuickSort(titlesIndex, 16, 0, 4);
-            Functions.QuickSort(reverseIndex, 16, 0, 4);
-            uint last_num = uint.MinValue;
-            for (int i = 0; i < titlesIndex.Length / 16; i++)
-            {
-                uint num = BitConverter.ToUInt32(titlesIndex, i * 16);
-                if (num < last_num)
-                    throw new Exception("Sorting error!");
-                last_num = num;
-            }
-            last_num = uint.MinValue;
-            for (int i = 0; i < reverseIndex.Length / 16; i++)
-            {
-                uint num = BitConverter.ToUInt32(reverseIndex, i * 16);
-                if (num < last_num)
-                    throw new Exception("Sorting error!");
-                last_num = num;
-            }
             uint[] titlesIndex2 = Functions.Index(titlesIndex, 16, 0);
             uint[] reverseIndex2 = Functions.Index(reverseIndex, 16, 0);
             while (true)
@@ -148,7 +131,6 @@ namespace Indexer
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
                     uint titleCRC = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8);
-                    if (titleCRC == 0) continue;
                     uint freq = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8 + 4);
                     int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
                     if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
@@ -161,7 +143,7 @@ namespace Indexer
             }
         }
 
-        static void Main(string[] args)
+        static void _Main(string[] args)
         {
             Console.WriteLine("Creating index...");
             if (!Lexicon_outputs.All((path) => File.Exists(path)))
@@ -730,14 +712,6 @@ namespace Indexer
             BinaryWriter reverseIndexWriter = new BinaryWriter(reverseIndex);
             BinaryWriter reverseIndexIndexWriter = new BinaryWriter(reverseIndexIndex);
 
-            long cf = 0;
-            for (int i = 0; i < wordsCount.Length; i++)
-            {
-                if (wordsCount[i] == 0) throw new Exception("Invalid!");
-                cf += wordsCount[i];
-            }
-            if (cf * 8 != forwardIndex.Length) throw new Exception("Invalid!");
-
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
@@ -866,12 +840,8 @@ namespace Indexer
             Console.WriteLine("Verifying reverse index...");
 
             for (int i = 0; i < wordsCount.Length; i++)
-            {
-                long _written = written[i];
-                long _count = wordsCount[i];
-                if (_written != _count)
-                    throw new Exception("Reverse index corrupted!");
-            }
+                if (written[i] != wordsCount[i])
+                    throw new Exception("Reverse index not fully generated!");
 
             reverseIndexWriter.Flush();
             reverseIndexIndexWriter.Flush();
