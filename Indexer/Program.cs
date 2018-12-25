@@ -34,6 +34,9 @@ namespace Indexer
         const string reverseIndexPath = "reverse_index.bin";
         const string reverseIndexIndexPath = "reverse_index.index";
 
+        const string reverseIndexSortedIndexPath = "reverse_index2.index";
+        const string reverseIndexSortedPath = "reverse_index_sorted.bin";
+
         const string reverseIndexIndexSortedPath = "reverse_index_sorted.index";
 
         static byte[] ReadBytes(string file, long pos, int len)
@@ -110,7 +113,7 @@ namespace Indexer
             }
         }
 
-        static void Main(string[] args)
+        static void Main3(string[] args)
         {
             byte[] titlesIndex = File.ReadAllBytes("titles.index");
             byte[] reverseIndex = File.ReadAllBytes("reverse_index_sorted.index");
@@ -144,7 +147,7 @@ namespace Indexer
             }
         }
 
-        static void _Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("Creating index...");
             if (!Lexicon_outputs.All((path) => File.Exists(path)))
@@ -163,6 +166,8 @@ namespace Indexer
                 if (!ReverseIndex()) throw new Exception("Unable to reverse index!");
             if (!SortReverseIndex_outputs.All((path) => File.Exists(path)))
                 if (!SortReverseIndex()) throw new Exception("Unable to sort reverse index!");
+            if (!SortReverseIndexIndex_outputs.All((path) => File.Exists(path)))
+                if (!SortReverseIndexIndex()) throw new Exception("Unable to sort reverse index index!");
             Console.WriteLine("Index created!");
             Console.ReadKey();
         }
@@ -170,8 +175,8 @@ namespace Indexer
         static string[] Lexicon_outputs = new string[] { lexiconPath, lexiconIndexPath };
         static bool Lexicon()
         {
-            if (!Functions.VerifyIO(Lexicon_inputs, Lexicon_outputs)) return false;
             Console.WriteLine("Generating lexicon...");
+            if (!Functions.VerifyIO(Lexicon_inputs, Lexicon_outputs)) return false;
             FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
             FileStream lexicon = new FileStream(lexiconPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
@@ -329,8 +334,8 @@ namespace Indexer
         static string[] SortLexicon_outputs = new string[] { lexiconSortedIndexPath };
         static bool SortLexicon()
         {
-            if (!Functions.VerifyIO(SortLexicon_inputs, SortLexicon_outputs)) return false;
             Console.WriteLine("Sorting lexicon...");
+            if (!Functions.VerifyIO(SortLexicon_inputs, SortLexicon_outputs)) return false;
             byte[] data = File.ReadAllBytes(lexiconIndexPath);
             Functions.QuickSort(data, 16, 0, 4);
             File.WriteAllBytes(lexiconSortedIndexPath, data);
@@ -340,8 +345,8 @@ namespace Indexer
         static string[] ForwardIndex_output = new string[] { forwardIndexPath, forwardIndexIndexPath };
         static bool ForwardIndex()
         {
-            if (!Functions.VerifyIO(ForwardIndex_inputs, ForwardIndex_output)) return false;
             Console.WriteLine("Generating forward index...");
+            if (!Functions.VerifyIO(ForwardIndex_inputs, ForwardIndex_output)) return false;
             FileStream repository = new FileStream(repositoryPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream repositoryIndex = new FileStream(repositoryIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 16);
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 32);
@@ -521,8 +526,8 @@ namespace Indexer
         {
             const uint wordsPerLock = 256;
             const uint chunkSize = 1024 * 16;
-            if (!Functions.VerifyIO(WordsCount_inputs, WordsCount_output)) return false;
             Console.WriteLine("Counting words...");
+            if (!Functions.VerifyIO(WordsCount_inputs, WordsCount_output)) return false;
             byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
             FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream frequencyStream = new FileStream(frequencyPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
@@ -663,8 +668,8 @@ namespace Indexer
         static string[] SortFrequency_output = new string[] { frequencySortedPath };
         static bool SortFrequency()
         {
-            if (!Functions.VerifyIO(SortFrequency_inputs, SortFrequency_output)) return false;
             Console.WriteLine("Sorting frequencies...");
+            if (!Functions.VerifyIO(SortFrequency_inputs, SortFrequency_output)) return false;
             byte[] data = File.ReadAllBytes(frequencyPath);
             Functions.QuickSort(data, 8, 0, 4);
             File.WriteAllBytes(frequencySortedPath, data);
@@ -674,8 +679,8 @@ namespace Indexer
         static string[] SortWordsCount_output = new string[] { wordsCountSortedPath };
         static bool SortWordsCount()
         {
-            if (!Functions.VerifyIO(SortWordsCount_inputs, SortWordsCount_output)) return false;
             Console.WriteLine("Sorting words count...");
+            if (!Functions.VerifyIO(SortWordsCount_inputs, SortWordsCount_output)) return false;
             byte[] data = File.ReadAllBytes(wordsCountPath);
             Functions.QuickSort(data, 8, 0, 4);
             File.WriteAllBytes(wordsCountSortedPath, data);
@@ -688,8 +693,8 @@ namespace Indexer
             const uint wordsPerLock = 256;
             const long chunkSize = (long)(1024 * 1024 * 1024 * (decimal)1.5);
             if (chunkSize % 4 != 0) throw new Exception("Invalid chunk size");
-            if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             Console.WriteLine("Creating reverse indices...");
+            if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
             byte[] wordsCountBytes = File.ReadAllBytes(wordsCountPath);
             uint[] wordsCountIndexIndex = Functions.Index(wordsCountBytes, 8, 0, 3);
             uint[] wordsCount = new uint[wordsCountBytes.Length / 8];
@@ -862,14 +867,142 @@ namespace Indexer
 
             return true;
         }
-
-        static string[] SortReverseIndex_inputs = new string[] { reverseIndexIndexPath };
-        static string[] SortReverseIndex_outputs = new string[] { reverseIndexIndexSortedPath };
+        static string[] SortReverseIndex_inputs = new string[] { reverseIndexPath, reverseIndexIndexPath };
+        static string[] SortReverseIndex_outputs = new string[] {reverseIndexSortedIndexPath , reverseIndexSortedPath };
         static bool SortReverseIndex()
         {
-            if (!Functions.VerifyIO(SortReverseIndex_inputs, SortReverseIndex_outputs)) return false;
             Console.WriteLine("Sorting reverse index...");
-            byte[] data = File.ReadAllBytes(reverseIndexIndexPath);
+            if (!Functions.VerifyIO(SortReverseIndex_inputs, SortReverseIndex_outputs)) return false;
+
+            FileStream reverseIndex = new FileStream(reverseIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
+            FileStream reverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
+            FileStream reverseIndexSorted = new FileStream(reverseIndexSortedPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 64);
+            FileStream reverseIndexSortedIndex = new FileStream(reverseIndexSortedIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
+
+            BinaryReader reverseIndexReader = new BinaryReader(reverseIndex);
+            BinaryReader reverseIndexIndexReader = new BinaryReader(reverseIndexIndex);
+            BinaryWriter reverseIndexSortedWriter = new BinaryWriter(reverseIndexSorted);
+            BinaryWriter reverseIndexSortedIndexWriter = new BinaryWriter(reverseIndexSortedIndex);
+
+            Stopwatch stopwatch = new Stopwatch();
+            long totalWords = reverseIndexIndex.Length / 16;
+            long wordsRead = 0;
+            long wordsProcessed = 0;
+
+            //Creating Machinery
+            AsyncConverter<Tuple<uint, byte[]>, Tuple<uint, byte[]>> converter = null;
+            converter = new AsyncConverter<Tuple<uint, byte[]>, Tuple<uint, byte[]>>(
+                (Tuple<uint, byte[]> input, ref Tuple<uint, byte[]> output) =>
+                {
+                    Functions.QuickSort(input.Item2, 8, 4, 4);
+                    output = input;
+                    return true;
+                });
+            SyncSink<Tuple<uint, byte[]>> sink = null;
+            sink = new SyncSink<Tuple<uint, byte[]>>(
+                (Tuple<uint, byte[]> wordsfreq) =>
+                {
+                    uint wordCRC = wordsfreq.Item1;
+                    byte[] frequencies = wordsfreq.Item2;
+                    reverseIndexSortedIndexWriter.Write(wordCRC);
+                    reverseIndexSortedIndexWriter.Write((ulong)reverseIndexSorted.Position);
+                    reverseIndexSortedIndexWriter.Write((uint)frequencies.Length);
+                    reverseIndexSortedWriter.Write(frequencies);
+                    Interlocked.Increment(ref wordsProcessed);
+                    return true;
+                });
+
+            //Setting up
+            converter.Queue = new Zds.Flow.Collections.SafeRound<Tuple<uint, byte[]>>(1024 * 4);
+            converter.MaxThreads = 8;
+            converter.MustConvert = true;
+            converter.Recursive = true;
+            sink.Recursive = true;
+
+            //Connecting
+            converter.Sink = sink;
+
+            //Exception handler
+            ExceptionHandler eh = new ConsoleLogger();
+            eh.Add(converter);
+            eh.Add(sink);
+
+            //Updater
+            long lastIndexPos = 0;
+            long lastWordRead = 0;
+            long lastWordProcessed = 0;
+            SyncTimer timer = null;
+            timer = new SyncTimer(
+                (ISyncTimer sender, ref TimeSpan time) =>
+                {
+                    long pos_diff = reverseIndex.Position - lastIndexPos;
+                    long pr_diff = wordsRead - lastWordRead;
+                    long pp_diff = wordsProcessed - lastWordProcessed;
+                    Console.Title = "Repos: " + Functions.SizeSuffix(reverseIndex.Position) + "/" + Functions.SizeSuffix(reverseIndex.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
+                                    "WR: " + wordsRead.ToString() + "/" + totalWords.ToString() + "(" + pr_diff.ToString() + "/s), " +
+                                    "WW: " + wordsProcessed.ToString() + "/" + totalWords.ToString() + "(" + pp_diff.ToString() + "/s), ";
+                    lastIndexPos = reverseIndex.Position;
+                    lastWordRead = wordsRead;
+                    lastWordProcessed = wordsProcessed;
+                });
+
+            //Starting pipeline
+            stopwatch.Start();
+            timer.Start();
+            converter.Start();
+            sink.Start();
+
+            //Creating virtual source
+            for (wordsRead = 0; wordsRead < totalWords; wordsRead++)
+            {
+                uint word_id = reverseIndexIndexReader.ReadUInt32();
+                ulong content_pos = reverseIndexIndexReader.ReadUInt64();
+                uint content_length = reverseIndexIndexReader.ReadUInt32();
+                if (reverseIndex.Position != (long)content_pos)
+                    reverseIndex.Position = (long)content_pos;
+                byte[] content = reverseIndexReader.ReadBytes((int)content_length);
+                var tuple = new Tuple<uint, byte[]>(word_id, content);
+                while (!converter.Receive(tuple))
+                    Thread.Sleep(1);
+            }
+
+            //Waiting to finish
+            while (wordsProcessed != totalWords)
+                Thread.Sleep(1);
+            stopwatch.Stop();
+
+            //Cleaning resources
+            timer.Destroy();
+            converter.Destroy();
+            sink.Destroy();
+
+            Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
+
+            reverseIndexSortedWriter.Flush();
+            reverseIndexSortedIndexWriter.Flush();
+
+            reverseIndexSorted.Flush();
+            reverseIndexSortedIndex.Flush();
+
+            reverseIndexReader.Dispose();
+            reverseIndexIndexReader.Dispose();
+            reverseIndexSortedWriter.Dispose();
+            reverseIndexSortedIndexWriter.Dispose();
+
+            reverseIndex.Dispose();
+            reverseIndexIndex.Dispose();
+            reverseIndexSorted.Dispose();
+            reverseIndexSortedIndex.Dispose();
+
+            return true;
+        }
+        static string[] SortReverseIndexIndex_inputs = new string[] { reverseIndexSortedIndexPath };
+        static string[] SortReverseIndexIndex_outputs = new string[] { reverseIndexIndexSortedPath };
+        static bool SortReverseIndexIndex()
+        {
+            if (!Functions.VerifyIO(SortReverseIndexIndex_inputs, SortReverseIndexIndex_outputs)) return false;
+            Console.WriteLine("Sorting reverse index index...");
+            byte[] data = File.ReadAllBytes(reverseIndexSortedIndexPath);
             Functions.QuickSort(data, 16, 0, 4);
             File.WriteAllBytes(reverseIndexIndexSortedPath, data);
             return true;
