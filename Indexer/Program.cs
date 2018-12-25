@@ -130,8 +130,7 @@ namespace Indexer
                     throw new Exception("Paradox!");
                 long r_pos = (long)BitConverter.ToUInt64(reverseIndex, r_index * 16 + 4);
                 int r_len = (int)BitConverter.ToUInt32(reverseIndex, r_index * 16 + 12);
-                byte[] pages = ReadBytes("reverse_index.bin", r_pos, r_len);
-                Functions.QuickSort(pages, 8, 4, 4);
+                byte[] pages = ReadBytes("reverse_index_sorted.bin", r_pos, r_len);
                 for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
                 {
                     uint titleCRC = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8);
@@ -874,7 +873,7 @@ namespace Indexer
             Console.WriteLine("Sorting reverse index...");
             if (!Functions.VerifyIO(SortReverseIndex_inputs, SortReverseIndex_outputs)) return false;
 
-            FileStream reverseIndex = new FileStream(reverseIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 128);
+            FileStream reverseIndex = new FileStream(reverseIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 64);
             FileStream reverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 1024 * 16);
             FileStream reverseIndexSorted = new FileStream(reverseIndexSortedPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 64);
             FileStream reverseIndexSortedIndex = new FileStream(reverseIndexSortedIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 1024 * 16);
@@ -886,45 +885,95 @@ namespace Indexer
 
             Stopwatch stopwatch = new Stopwatch();
             long totalWords = reverseIndexIndex.Length / 16;
+            long wordsRead = 0;
             long wordsProcessed = 0;
+
+            //Creating Machinery
+            AsyncConverter<Tuple<uint, byte[]>, Tuple<uint, byte[]>> converter = null;
+            converter = new AsyncConverter<Tuple<uint, byte[]>, Tuple<uint, byte[]>>(
+                (Tuple<uint, byte[]> input, ref Tuple<uint, byte[]> output) =>
+                {
+                    Functions.QuickSort(input.Item2, 8, 4, 4);
+                    output = input;
+                    return true;
+                });
+            SyncSink<Tuple<uint, byte[]>> sink = null;
+            sink = new SyncSink<Tuple<uint, byte[]>>(
+                (Tuple<uint, byte[]> wordsfreq) =>
+                {
+                    uint wordCRC = wordsfreq.Item1;
+                    byte[] frequencies = wordsfreq.Item2;
+                    reverseIndexSortedIndexWriter.Write(wordCRC);
+                    reverseIndexSortedIndexWriter.Write((ulong)reverseIndexSorted.Position);
+                    reverseIndexSortedIndexWriter.Write((uint)frequencies.Length);
+                    reverseIndexSortedWriter.Write(frequencies);
+                    Interlocked.Increment(ref wordsProcessed);
+                    return true;
+                });
+
+            //Setting up
+            converter.Queue = new Zds.Flow.Collections.SafeRound<Tuple<uint, byte[]>>(1024 * 4);
+            converter.MaxThreads = 8;
+            converter.MustConvert = true;
+            converter.Recursive = true;
+            sink.Recursive = true;
+
+            //Connecting
+            converter.Sink = sink;
+
+            //Exception handler
+            ExceptionHandler eh = new ConsoleLogger();
+            eh.Add(converter);
+            eh.Add(sink);
 
             //Updater
             long lastIndexPos = 0;
-            long lastWordsProcessed = 0;
+            long lastWordRead = 0;
+            long lastWordProcessed = 0;
             SyncTimer timer = null;
             timer = new SyncTimer(
                 (ISyncTimer sender, ref TimeSpan time) =>
                 {
                     long pos_diff = reverseIndex.Position - lastIndexPos;
-                    long pp_diff = wordsProcessed - lastWordsProcessed;
+                    long pr_diff = wordsRead - lastWordRead;
+                    long pp_diff = wordsProcessed - lastWordProcessed;
                     Console.Title = "Repos: " + Functions.SizeSuffix(reverseIndex.Position) + "/" + Functions.SizeSuffix(reverseIndex.Length) + "(" + Functions.SizeSuffix(pos_diff) + "/s), " +
+                                    "WR: " + wordsRead.ToString() + "/" + totalWords.ToString() + "(" + pr_diff.ToString() + "/s), " +
                                     "WW: " + wordsProcessed.ToString() + "/" + totalWords.ToString() + "(" + pp_diff.ToString() + "/s), ";
                     lastIndexPos = reverseIndex.Position;
-                    lastWordsProcessed = wordsProcessed;
+                    lastWordRead = wordsRead;
+                    lastWordProcessed = wordsProcessed;
                 });
 
+            //Starting pipeline
             stopwatch.Start();
             timer.Start();
+            converter.Start();
+            sink.Start();
 
-            for (long wordsRead = 0; wordsRead < totalWords; wordsRead++)
+            //Creating virtual source
+            for (wordsRead = 0; wordsRead < totalWords; wordsRead++)
             {
-                uint wordCRC = reverseIndexIndexReader.ReadUInt32();
+                uint word_id = reverseIndexIndexReader.ReadUInt32();
                 ulong content_pos = reverseIndexIndexReader.ReadUInt64();
                 uint content_length = reverseIndexIndexReader.ReadUInt32();
                 if (reverseIndex.Position != (long)content_pos)
                     reverseIndex.Position = (long)content_pos;
                 byte[] content = reverseIndexReader.ReadBytes((int)content_length);
-                Functions.QuickSort(content, 8, 4, 4);
-                reverseIndexSortedIndexWriter.Write(wordCRC);
-                reverseIndexSortedIndexWriter.Write((ulong)reverseIndexSorted.Position);
-                reverseIndexSortedIndexWriter.Write((uint)content.Length);
-                reverseIndexSortedWriter.Write(content);
-                Interlocked.Increment(ref wordsProcessed);
+                var tuple = new Tuple<uint, byte[]>(word_id, content);
+                while (!converter.Receive(tuple))
+                    Thread.Sleep(1);
             }
 
+            //Waiting to finish
+            while (wordsProcessed != totalWords)
+                Thread.Sleep(1);
             stopwatch.Stop();
-            timer.Stop();
+
+            //Cleaning resources
             timer.Destroy();
+            converter.Destroy();
+            sink.Destroy();
 
             Console.WriteLine("Time taken: " + stopwatch.Elapsed.ToString());
 
