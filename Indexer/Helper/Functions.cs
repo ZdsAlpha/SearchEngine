@@ -54,6 +54,8 @@ namespace Helper
         }
         private static void quicksort(byte[] data, int size, int offset, int length, int left, int right)
         {
+            if (right * size + offset + length > data.Length)
+                throw new Exception("Right index out of range!");
             Random random = new Random();
             Stack<Tuple<int, int>> stack = new Stack<Tuple<int, int>>();
             stack.Push(new Tuple<int, int>(left, right));
@@ -82,27 +84,39 @@ namespace Helper
         {
             if (left > right) return -1;
             int end = left;
+            bool all_equal = true;
             byte[] pivot = new byte[length];
             Buffer.BlockCopy(data, right * size + offset, pivot, 0, length);
             for (int i = left; i < right; i++)
             {
-                bool is_less = true;
+                int comparison = 0;
                 for (int j = length - 1; j >= 0; j--)
-                    if (j == 0)
-                        is_less = data[i * size + offset + j] < pivot[j];
-                    else if (data[i * size + offset + j] < pivot[j])
-                        break;
-                    else if (data[i * size + offset + j] > pivot[j])
+                    if (data[i * size + offset + j] < pivot[j])
                     {
-                        is_less = false;
+                        comparison = -1;
                         break;
                     }
-                if (is_less)
+                    else if (data[i * size + offset + j] > pivot[j]) 
+                    {
+                        comparison = 1;
+                        break;
+                    }
+                if (comparison > 0)
+                {
+                    all_equal = false;
+                }
+                else if (comparison < 0) 
                 {
                     swap(data, size, i, end);
                     end++;
+                    all_equal = false;
+                }
+                else
+                {
+                    //end++;
                 }
             }
+            if (all_equal) return -1;
             swap(data, size, end, right);
             return end;
         }

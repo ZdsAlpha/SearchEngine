@@ -53,7 +53,8 @@ namespace Indexer
             int stop;
             Functions.BinarySearch(data, size, offset, obj, out start, out stop, index);
             if (stop - start > 0)
-                throw new Exception("Collision detected!");
+                return start;
+            //throw new Exception("Collision detected!");
             else if (start == stop)
                 return start;
             return -1;
@@ -861,6 +862,7 @@ namespace Indexer
 
             return true;
         }
+
         static string[] SortReverseIndex_inputs = new string[] { reverseIndexIndexPath };
         static string[] SortReverseIndex_outputs = new string[] { reverseIndexIndexSortedPath };
         static bool SortReverseIndex()
@@ -870,89 +872,6 @@ namespace Indexer
             byte[] data = File.ReadAllBytes(reverseIndexIndexPath);
             Functions.QuickSort(data, 16, 0, 4);
             File.WriteAllBytes(reverseIndexIndexSortedPath, data);
-            return true;
-        }
-        static bool _ReverseIndex()
-        {
-            if (!Functions.VerifyIO(ReverseIndex_inputs, ReverseIndex_outputs)) return false;
-            Console.WriteLine("Creating reverse indices...");
-            byte[] lexiconIndex = File.ReadAllBytes(lexiconSortedIndexPath);
-            uint[] lexiconIndex2 = Functions.Index(lexiconIndex, 16, 0);
-
-            FileStream forwardIndex = new FileStream(forwardIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 16);
-            FileStream forwardIndexIndex = new FileStream(forwardIndexIndexPath, FileMode.Open, FileAccess.Read, FileShare.None, 1024 * 4);
-            MemoryStream reverseIndex = new MemoryStream();
-            reverseIndex.SetLength(forwardIndex.Length);
-            FileStream reverseIndexIndex = new FileStream(reverseIndexIndexPath, FileMode.Create, FileAccess.Write, FileShare.Read, 1024 * 4);
-
-            BinaryReader forwardIndexReader = new BinaryReader(forwardIndex);
-            BinaryReader forwardIndexIndexReader = new BinaryReader(forwardIndexIndex);
-            BinaryWriter reverseIndexWriter = new BinaryWriter(reverseIndex);
-            BinaryWriter reverseIndexIndexWriter = new BinaryWriter(reverseIndexIndex);
-
-            int[] wordcount = new int[lexiconIndex.Length / 16];
-            for (int i = 0; i < forwardIndex.Length / 8; i++)
-            {
-                int start;
-                int stop;
-                Functions.BinarySearch(lexiconIndex, 16, 0, forwardIndexReader.ReadBytes(4),out start,out stop, lexiconIndex2);
-                forwardIndexReader.ReadBytes(4);
-                if (stop - start > 0) throw new Exception("Collision detected!");
-                if (start == stop)
-                    wordcount[start]++;
-            }
-
-            ulong[] wordpos = new ulong[wordcount.Length];
-            ulong cf = 0;
-            for (int i = 0; i < wordcount.Length; i++)
-                if (wordcount[i] != 0)
-                {
-                    reverseIndexIndexWriter.Write(lexiconIndex, i * 16, 4);
-                    reverseIndexIndexWriter.Write(cf * 8);
-                    reverseIndexIndexWriter.Write(wordcount[i] * 8);
-                    wordpos[i] += cf;
-                    cf += (ulong)wordcount[i];
-                }
-                else
-                    throw new Exception("Word count cannot be zero");
-            int[] wordcount2 = new int[lexiconIndex.Length / 16];
-            for (int i = 0; i < forwardIndexIndex.Length / 16; i++)
-            {
-                uint CRC = forwardIndexIndexReader.ReadUInt32();
-                ulong pos = forwardIndexIndexReader.ReadUInt64();
-                uint len = forwardIndexIndexReader.ReadUInt32();
-                if (forwardIndex.Position != (long)pos)
-                    forwardIndex.Position = (long)pos;
-                for (int j = 0; j < len / 8; j++)
-                {
-                    uint wordCRC = forwardIndexReader.ReadUInt32();
-                    uint freq = forwardIndexReader.ReadUInt32();
-                    int start;
-                    int stop;
-                    Functions.BinarySearch(lexiconIndex, 16, 0, BitConverter.GetBytes(wordCRC), out start, out stop, lexiconIndex2);
-                    if (stop - start > 0) throw new Exception("Collision detected!");
-                    if (start == stop)
-                    {
-                        reverseIndex.Position = (long)(wordpos[start] * 8 + (ulong)wordcount2[start] * 8);
-                        reverseIndexWriter.Write(CRC);
-                        reverseIndexWriter.Write(freq);
-                        wordcount2[start]++;
-                    }
-                }
-            }
-            Console.WriteLine("Verifying reverse indices...");
-            for (int i = 0; i < wordcount.Length; i++)
-                if (wordcount[i] != wordcount2[i])
-                    throw new Exception("Count mismatch!");
-
-            reverseIndexWriter.Flush();
-            reverseIndexIndexWriter.Flush();
-
-            File.WriteAllBytes(reverseIndexPath, reverseIndex.ToArray());
-
-            reverseIndexWriter.Dispose();
-            reverseIndexIndexWriter.Dispose();
-
             return true;
         }
     }
