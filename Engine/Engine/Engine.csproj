@@ -4,16 +4,16 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Helper</RootNamespace>
-    <AssemblyName>Helper</AssemblyName>
+    <ProjectGuid>{4662F656-3BEB-4DBF-BD4C-8B8AF88B4A00}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Engine</RootNamespace>
+    <AssemblyName>Engine</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -23,6 +23,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -31,22 +32,49 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="DataStructs">
+      <HintPath>..\..\DataStructures\DataStructs\bin\Debug\DataStructs.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="Zds.Flow">
+      <HintPath>..\..\Dependencies\Zds.Flow.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BinaryTree.cs" />
-    <Compile Include="CRC32.cs" />
+    <Compile Include="Engine.cs" />
     <Compile Include="Functions.cs" />
-    <Compile Include="HashValuePair.cs" />
-    <Compile Include="IntSpace.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SafeIntSpace.cs" />
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\logo" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\FrontPage.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\Results.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\ListItem.html" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

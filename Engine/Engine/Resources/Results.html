@@ -1,0 +1,29 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>ACCIO Your Personal Wiki</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+</head>
+<body>
+
+<div class="container" align="center" style="position: absolute;margin: auto;top: 0;right: 0;bottom: 0;left: 0;width: 750px;height: 750px;">
+    <img src="data:image/png;base64, ##LOGO_BASE64##" class="img-responsive" alt="ACCIO">
+    <div class="input-group">
+        <span class="input-group-addon">Search Query</span>
+        <input id="search" type="text" class="form-control" placeholder="Search" value="##SEARCH_QUERY##">
+    </div>
+    <button type="button" class="btn btn-primary" onclick="window.location.href='/search?query='+encodeURI(document.getElementById('search').value)">Search</button>
+    <hr/>
+    <div class="container" align="left" style="position: absolute;margin: auto;top: 0;right: 0;bottom: 0;left: 0;width: 750px;height: 0px;">
+        <ul class="list-group">
+##LIST_ITEMS##
+        </ul>
+    </div>
+</div>
+
+</body>
+</html>

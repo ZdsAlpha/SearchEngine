@@ -5,8 +5,6 @@ VisualStudioVersion = 15.0.28307.136
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Indexer", "Indexer.csproj", "{90A796AD-6AF2-4E71-BB6D-38F09A6D33CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Helper", "Helper\Helper.csproj", "{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Repository", "Repository\Repository.csproj", "{B94FACCE-CDCE-4AD8-A8C5-322BC9029B8C}"
 EndProject
 Global
@@ -19,10 +17,6 @@ Global
 		{90A796AD-6AF2-4E71-BB6D-38F09A6D33CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90A796AD-6AF2-4E71-BB6D-38F09A6D33CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{90A796AD-6AF2-4E71-BB6D-38F09A6D33CA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EA4E21CB-968F-4FE1-8BDE-E360E1E01EE1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B94FACCE-CDCE-4AD8-A8C5-322BC9029B8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B94FACCE-CDCE-4AD8-A8C5-322BC9029B8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B94FACCE-CDCE-4AD8-A8C5-322BC9029B8C}.Release|Any CPU.ActiveCfg = Release|Any CPU

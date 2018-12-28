@@ -8,7 +8,7 @@ using System.Threading;
 using Zds.Flow.Machinery.Objects;
 using Zds.Flow.ExceptionHandling;
 using Zds.Flow.Updatables;
-using Helper;
+using DataStructs;
 
 namespace Indexer
 {
@@ -38,113 +38,6 @@ namespace Indexer
         const string reverseIndexSortedPath = "reverse_index_sorted.bin";
 
         const string reverseIndexIndexSortedPath = "reverse_index_sorted.index";
-
-        static byte[] ReadBytes(string file, long pos, int len)
-        {
-            using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read)) 
-            {
-                using (BinaryReader bn = new BinaryReader(fs))
-                {
-                    fs.Position = pos;
-                    return bn.ReadBytes(len);
-                }
-            }
-        }
-        static int GetIndex(byte[] data, int size, int offset, byte[] obj, uint[] index)
-        {
-            int start;
-            int stop;
-            Functions.BinarySearch(data, size, offset, obj, out start, out stop, index);
-            if (stop - start > 0)
-                return start;
-            //throw new Exception("Collision detected!");
-            else if (start == stop)
-                return start;
-            return -1;
-        }
-
-        static void Main1(string[] args)
-        {
-            byte[] lexicon = File.ReadAllBytes("lexicon_sorted.index");
-            uint[] lexicon3 = Functions.Index(lexicon, 16, 0, 3);
-            byte[] frequency = File.ReadAllBytes("frequency.bin");
-            Functions.QuickSort(frequency, 8, 4, 4);
-            for (int i = 0; i < 1000; i++)
-            {
-                int freq_pos = (frequency.Length / 8 - i - 1) * 8;
-                uint CRC = BitConverter.ToUInt32(frequency, freq_pos);
-                uint freq = BitConverter.ToUInt32(frequency, freq_pos + 4);
-                int index = Functions.GetIndex(lexicon, 16, 0, BitConverter.GetBytes(CRC), lexicon3);
-                long w_pos = (long)BitConverter.ToUInt64(lexicon, index * 16 + 4);
-                int w_len = (int)BitConverter.ToUInt32(lexicon, index * 16 + 12);
-                string word = Encoding.UTF8.GetString(ReadBytes("lexicon.txt", w_pos, w_len)).TrimEnd('\r', '\n');
-                Console.WriteLine(word + "\t" + freq.ToString());
-            }
-            Console.ReadKey();
-        }
-
-        static void Main2(string[] args)
-        {
-            byte[] wordIndex = File.ReadAllBytes("lexicon_sorted.index");
-            byte[] forwardIndex = File.ReadAllBytes("forwrad_index.index");
-            Functions.QuickSort(forwardIndex, 16, 0, 4);
-            uint[] wordIndex2 = Functions.Index(wordIndex, 16, 0);
-            uint[] forwardIndex2 = Functions.Index(forwardIndex, 16, 0);
-            while (true)
-            {
-                Console.Write("Enter title: ");
-                string title = Console.ReadLine();
-                uint titleCRC = Crc32.Compute(title);
-                int f_index = GetIndex(forwardIndex, 16, 0, BitConverter.GetBytes(titleCRC), forwardIndex2);
-                long f_pos = (long)BitConverter.ToUInt64(forwardIndex, f_index * 16 + 4);
-                int f_len = (int)BitConverter.ToUInt32(forwardIndex, f_index * 16 + 12);
-                byte[] words = ReadBytes("forward_index.bin", f_pos, f_len);
-                Functions.QuickSort(words, 8, 4, 4);
-                for (int i = 0; i < Math.Min(words.Length / 8, 1000); i++)
-                {
-                    uint wordCRC = BitConverter.ToUInt32(words, ((words.Length / 8) - i - 1) * 8);
-                    uint freq = BitConverter.ToUInt32(words, (words.Length / 8 - i - 1) * 8 + 4);
-                    int w_index = GetIndex(wordIndex, 16, 0, BitConverter.GetBytes(wordCRC), wordIndex2);
-                    long w_pos = (long)BitConverter.ToUInt64(wordIndex, w_index * 16 + 4);
-                    int w_len = (int)BitConverter.ToUInt32(wordIndex, w_index * 16 + 12);
-                    string word = Encoding.UTF8.GetString(ReadBytes("lexicon.txt", w_pos, w_len)).TrimEnd('\r', '\n');
-                    Console.WriteLine(word + "\t" + freq.ToString());
-                }
-            }
-        }
-
-        static void Main3(string[] args)
-        {
-            byte[] titlesIndex = File.ReadAllBytes("titles.index");
-            byte[] reverseIndex = File.ReadAllBytes("reverse_index_sorted.index");
-            Functions.QuickSort(titlesIndex, 16, 0, 4);
-            uint[] titlesIndex2 = Functions.Index(titlesIndex, 16, 0);
-            uint[] reverseIndex2 = Functions.Index(reverseIndex, 16, 0);
-            while (true)
-            {
-                Console.Write("Enter word: ");
-                string word = Console.ReadLine();
-                uint wordCRC = Crc32.Compute(word.ToLower());
-                int r_index = GetIndex(reverseIndex, 16, 0, BitConverter.GetBytes(wordCRC), reverseIndex2);
-                if (BitConverter.ToUInt32(reverseIndex, r_index * 16) != wordCRC)
-                    throw new Exception("Paradox!");
-                long r_pos = (long)BitConverter.ToUInt64(reverseIndex, r_index * 16 + 4);
-                int r_len = (int)BitConverter.ToUInt32(reverseIndex, r_index * 16 + 12);
-                byte[] pages = ReadBytes("reverse_index_sorted.bin", r_pos, r_len);
-                for (int i = 0; i < Math.Min(pages.Length / 8, 100); i++)
-                {
-                    uint titleCRC = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8);
-                    uint freq = BitConverter.ToUInt32(pages, (pages.Length / 8 - i - 1) * 8 + 4);
-                    int t_index = GetIndex(titlesIndex, 16, 0, BitConverter.GetBytes(titleCRC), titlesIndex2);
-                    if (BitConverter.ToUInt32(titlesIndex, t_index * 16) != titleCRC)
-                        throw new Exception("Paradox!");
-                    long t_pos = (long)BitConverter.ToUInt64(titlesIndex, t_index * 16 + 4);
-                    int t_len = (int)BitConverter.ToUInt32(titlesIndex, t_index * 16 + 12);
-                    string title = Encoding.UTF8.GetString(ReadBytes("titles.txt", t_pos, t_len)).TrimEnd('\r', '\n');
-                    Console.WriteLine(freq.ToString() + "\t" + title);
-                }
-            }
-        }
 
         static void Main(string[] args)
         {

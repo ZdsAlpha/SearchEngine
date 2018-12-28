@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
-using Helper;
+using DataStructs;
 
 namespace Repository
 {
@@ -212,61 +212,6 @@ namespace Repository
             File.WriteAllBytes(redirectsSortedPath, data);
             data = null;
             return true;
-        }
-
-        static void ExtractPages(int pages = 1000)
-        {
-            FileStream titles = new FileStream(pageTitlePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 16);
-            FileStream titlesIndex = new FileStream(pageTitleIndexPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 4);
-            FileStream wikitext = new FileStream(wikitextPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024 * 2);
-            FileStream wikitextIndex = new FileStream(wikitextIndexPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 4);
-
-            FileStream minititles = new FileStream("mini_titles.txt", FileMode.Create);
-            FileStream minititlesIndex = new FileStream("mini_titles.index", FileMode.Create);
-            FileStream miniwikitext = new FileStream("mini_wikitext.txt", FileMode.Create);
-            FileStream miniwikitextIndex = new FileStream("mini_wikitext.index", FileMode.Create);
-
-            BinaryReader titlesReader = new BinaryReader(titles);
-            BinaryReader titlesIndexReader = new BinaryReader(titlesIndex);
-            BinaryReader wikitextReader = new BinaryReader(wikitext);
-            BinaryReader wikitextIndexReader = new BinaryReader(wikitextIndex);
-
-            BinaryWriter titlesWriter = new BinaryWriter(minititles);
-            BinaryWriter titlesIndexWriter = new BinaryWriter(minititlesIndex);
-            BinaryWriter wikitextWriter = new BinaryWriter(miniwikitext);
-            BinaryWriter wikitextIndexWriter = new BinaryWriter(miniwikitextIndex);
-
-            for (int i = 0; i < pages; i++)
-            {
-                uint CRC = titlesIndexReader.ReadUInt32();
-                if (CRC != wikitextIndexReader.ReadUInt32()) throw new Exception("Files not synchronized!");
-                ulong pos;
-                uint len;
-                pos = titlesIndexReader.ReadUInt64();
-                len = titlesIndexReader.ReadUInt32();
-                if ((long)pos != titles.Position) throw new Exception("Invalid position");
-                titlesIndexWriter.Write(CRC);
-                titlesIndexWriter.Write(pos);
-                titlesIndexWriter.Write(len);
-                titlesWriter.Write(titlesReader.ReadBytes((int)len));
-                pos = wikitextIndexReader.ReadUInt64();
-                len = wikitextIndexReader.ReadUInt32();
-                if ((long)pos != wikitext.Position) throw new Exception("Invalid position");
-                wikitextIndexWriter.Write(CRC);
-                wikitextIndexWriter.Write(pos);
-                wikitextIndexWriter.Write(len);
-                wikitextWriter.Write(wikitextReader.ReadBytes((int)len));
-            }
-
-            titlesWriter.Flush();
-            titlesIndexWriter.Flush();
-            wikitextWriter.Flush();
-            wikitextIndexWriter.Flush();
-
-            titlesWriter.Dispose();
-            titlesIndexWriter.Dispose();
-            wikitextWriter.Dispose();
-            wikitextIndexWriter.Dispose();
         }
     }
 }
